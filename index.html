@@ -4744,6 +4744,61 @@ async function gerarPDFBlob() {
   aplicarQuebraSegura(clone);
   clone.querySelectorAll('p, div, span, td, th, li, h1, h2, h3, h4, h5, h6').forEach(aplicarQuebraSegura);
 
+  // COMPATIBILIDADE COM html2canvas — algumas versões têm suporte parcial
+  // a CSS Grid: containers grid podem renderizar com largura colapsada,
+  // produzindo galerias de fotos espremidas no PDF. Trocamos os grids
+  // críticos por flexbox (suporte completo no html2canvas), preservando
+  // visualmente o mesmo layout de 2 colunas.
+
+  // Galeria de fotos — grid 2 cols → flex wrap com 50% cada (menos gap)
+  clone.querySelectorAll('.r-foto-galeria').forEach(g => {
+    g.style.display = 'flex';
+    g.style.flexWrap = 'wrap';
+    g.style.gap = '22px';
+    g.style.alignItems = 'flex-start';
+    g.style.width = '100%';
+  });
+  clone.querySelectorAll('.r-foto').forEach(card => {
+    // 2 colunas: cada card ocupa metade menos metade do gap
+    card.style.flex = '0 1 calc(50% - 11px)';
+    card.style.maxWidth = 'calc(50% - 11px)';
+    card.style.boxSizing = 'border-box';
+  });
+  clone.querySelectorAll('.r-foto.r-foto-panoramica').forEach(card => {
+    // Panorâmica ocupa linha inteira
+    card.style.flex = '0 0 100%';
+    card.style.maxWidth = '100%';
+  });
+
+  // Duplo registro técnico/proprietário — também é grid 2-cols
+  clone.querySelectorAll('.r-duplo-registro').forEach(g => {
+    g.style.display = 'flex';
+    g.style.flexWrap = 'wrap';
+    g.style.gap = '14px';
+    g.style.alignItems = 'stretch';
+  });
+  clone.querySelectorAll('.r-duplo-registro > .r-bloco').forEach(b => {
+    b.style.flex = '1 1 calc(50% - 7px)';
+    b.style.minWidth = '0';
+    b.style.boxSizing = 'border-box';
+  });
+
+  // Capa: meta-grid de proprietário/data/marina
+  clone.querySelectorAll('.capa-meta').forEach(g => {
+    g.style.display = 'flex';
+    g.style.flexWrap = 'wrap';
+    g.style.justifyContent = 'center';
+    g.style.gap = '32px';
+  });
+
+  // Assinatura do cliente — bloco com imagem + info
+  clone.querySelectorAll('.r-assinatura-cliente-grid').forEach(g => {
+    g.style.display = 'flex';
+    g.style.flexWrap = 'wrap';
+    g.style.gap = '20px';
+    g.style.alignItems = 'flex-end';
+  });
+
   wrapper.appendChild(clone);
   document.body.appendChild(wrapper);
 
@@ -5731,15 +5786,59 @@ function ocultarOverlayProcessando() {
   if (ov) ov.style.display = 'none';
 }
 
+// Markup canônico do modal de confirmação. Constante de referência para
+// que confirmar() consiga sempre reerguer o modal mesmo depois de
+// configurarAutoBackup() ter substituído os botões — caminho que faltava
+// restaurar nos paths de Cancelar/Escape/click-fora e gerava
+// "Cannot set properties of null (setting 'onclick')" na próxima
+// chamada de confirmar().
+const _MODAL_CONFIRM_TEXT_DEFAULT = 'Tem certeza?';
+const _MODAL_CONFIRM_ACTIONS_HTML =
+  '<button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>' +
+  '<button class="btn btn-primary" id="modalConfirmBtn">Confirmar</button>';
+
+function _restaurarModalConfirm() {
+  const modal = document.getElementById('modalConfirm');
+  if (!modal) return;
+  // Garante que modalText volte a ser texto (pode ter virado HTML em
+  // configurarAutoBackup) e que modalActions tenha botões padrão.
+  const acoes = modal.querySelector('.modal-actions');
+  if (acoes && !document.getElementById('modalConfirmBtn')) {
+    acoes.innerHTML = _MODAL_CONFIRM_ACTIONS_HTML;
+  }
+}
+
 function confirmar(titulo, texto, onConfirm) {
-  document.getElementById('modalTitle').textContent = titulo;
-  document.getElementById('modalText').textContent = texto;
-  document.getElementById('modalConfirm').classList.add('show');
+  // Reerguer markup ANTES de mexer em qualquer elemento — defesa contra
+  // estado órfão deixado por outros consumidores do modalConfirm.
+  _restaurarModalConfirm();
+  const tituloEl = document.getElementById('modalTitle');
+  const textoEl = document.getElementById('modalText');
+  const modalEl = document.getElementById('modalConfirm');
+  if (tituloEl) tituloEl.textContent = titulo;
+  if (textoEl) {
+    // textContent (não innerHTML) — texto vem de mensagens internas mas
+    // melhor não confiar em string templates.
+    textoEl.textContent = texto;
+  }
+  if (modalEl) modalEl.classList.add('show');
   const btn = document.getElementById('modalConfirmBtn');
-  btn.onclick = () => { fecharModal(); onConfirm(); };
+  if (btn) {
+    btn.onclick = () => { fecharModal(); onConfirm(); };
+  } else {
+    // Caso patológico: nem após restaurar achou o botão. Falha graciosa.
+    console.error('[Wonder Boat] modalConfirmBtn não encontrado — confirmação não pode ser exibida.');
+    fecharModal();
+    if (typeof onConfirm === 'function') onConfirm(); // segue fluxo sem confirmação
+  }
 }
 function fecharModal() {
-  document.getElementById('modalConfirm').classList.remove('show');
+  const modalEl = document.getElementById('modalConfirm');
+  if (modalEl) modalEl.classList.remove('show');
+  // Após fechar, agenda restauração — assim qualquer próximo confirmar()
+  // já parte de markup limpo, e configurarAutoBackup não precisa fazer
+  // restauração via setTimeout(200) que falhava em paths de cancelamento.
+  setTimeout(_restaurarModalConfirm, 0);
 }
 
 function renderTudo() {
@@ -6334,16 +6433,9 @@ function configurarAutoBackup() {
       toast('Auto-backup desativado.');
     }
     atualizarIconeAutoBackup();
-
-    // Restaura conteúdo do modalConfirm para uso futuro normal
-    setTimeout(() => {
-      titleEl.textContent = 'Confirmar ação';
-      textEl.textContent = 'Tem certeza?';
-      modalActions.innerHTML = `
-        <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
-        <button class="btn btn-primary" id="modalConfirmBtn">Confirmar</button>
-      `;
-    }, 200);
+    // Restauração do markup canônico é feita por fecharModal() acima —
+    // garantindo cobertura também dos paths de Cancelar e Escape, que
+    // antes deixavam o modalConfirm em estado inconsistente.
   };
 
   modal.classList.add('show');
