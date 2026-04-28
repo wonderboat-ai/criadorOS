@@ -1,0 +1,28 @@
+{
+  "name": "Wonder Boat — Gerador de Relatórios Técnicos Navais",
+  "short_name": "Wonder Boat",
+  "description": "Aplicativo de campo para coleta e geração de relatórios técnicos auditáveis de intervenções em embarcações — padrão NMEA 0400, NMEA 2000, ABYC e CIRM.",
+  "start_url": "./Index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#101c2d",
+  "theme_color": "#101c2d",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["productivity", "business", "utilities"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%23101c2d'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' font-family='serif' font-weight='700' font-size='80' fill='%2344c5d0'%3EWB%3C/text%3E%3Ctext x='50%25' y='78%25' text-anchor='middle' font-family='sans-serif' font-weight='500' font-size='18' fill='%23FAFAFA' letter-spacing='3'%3EWONDER BOAT%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%23101c2d'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' font-family='serif' font-weight='700' font-size='216' fill='%2344c5d0'%3EWB%3C/text%3E%3Ctext x='50%25' y='78%25' text-anchor='middle' font-family='sans-serif' font-weight='500' font-size='48' fill='%23FAFAFA' letter-spacing='8'%3EWONDER BOAT%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
