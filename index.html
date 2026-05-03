@@ -861,8 +861,11 @@ input, textarea, select { font-family: inherit; color: inherit; }
   background: #FFFFFF;
   color: #000000;
   font-family: 'Source Sans 3', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 15px;
-  line-height: 1.75;
+  /* Fonte 22px — bump de +4px sobre o anterior 18px após review da OS 4595
+     Squish. Tamanho confortável para leitura em PDF impresso e em tela,
+     mesmo para usuários com visão reduzida. */
+  font-size: 22px;
+  line-height: 1.8;
   padding: 56px 64px;
   max-width: 920px;
   margin: 0 auto;
@@ -876,13 +879,29 @@ input, textarea, select { font-family: inherit; color: inherit; }
   color: #000000;
 }
 
-/* CAPA */
+/* CAPA — ocupa página A4 inteira no PDF, com conteúdo centralizado
+   verticalmente. min-height de 1100px aproxima a altura útil de uma página
+   A4 retrato no canvas de 920px de largura usado no html2canvas (proporção
+   ~1.41), garantindo que o miolo da capa fique visualmente no centro
+   geométrico do papel. flexbox column + justify-content:center distribui
+   automaticamente sem precisar empurrar margens manuais. */
 .capa {
   text-align: center;
-  padding: 48px 0 64px;
+  padding: 56px 24px 56px;
   border-bottom: 2px solid var(--azul-marinho);
   margin-bottom: 48px;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  /* Altura útil de uma página A4 retrato no canvas de 920px de largura
+     usado no html2canvas (margens 16/14mm internas do jsPDF descontadas).
+     Garante que a capa ocupa a primeira página INTEIRA — todos os
+     elementos institucionais (Wonder Boat, Relatório Técnico, número OS,
+     embarcação, modelo, meta) ficam centralizados no eixo vertical. */
+  min-height: 1391px;
+  box-sizing: border-box;
 }
 .capa::before {
   content: '';
@@ -894,6 +913,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
   height: 4px;
   background: var(--dourado);
 }
+.capa-conteudo {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: center;
+}
 
 .capa-marca {
   display: flex;
@@ -902,11 +927,16 @@ input, textarea, select { font-family: inherit; color: inherit; }
   justify-content: center;
   gap: 14px;
   margin: 0 auto 40px;
-  padding: 24px 40px;
+  /* Padding lateral reduzido de 40px → 56px (aumentado p/ respiro maior)
+     e largura aumentada para 760px para a tagline caber confortavelmente
+     dentro da moldura turquesa, sem sangrar nas bordas. */
+  padding: 28px 56px;
   border: 1px solid var(--turquesa);
   border-radius: 6px;
   text-align: center;
-  max-width: 520px;
+  max-width: 760px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .capa-marca svg {
   width: 80px; height: 80px;
@@ -916,22 +946,25 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .capa-marca-text .name {
   font-family: var(--serif);
   font-weight: 700;
-  font-size: 30px;
+  font-size: 40px;
   color: var(--azul-marinho);
   letter-spacing: 0.02em;
 }
 .capa-marca-text .sub {
-  font-size: 10px;
-  letter-spacing: 0.28em;
+  /* Fonte reduzida em 4px (20 → 16) por solicitação após review da capa
+     na OS 4595 — equilíbrio entre legibilidade e proporção do card. */
+  font-size: 16px;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--turquesa);
   font-weight: 600;
   margin-top: 8px;
+  white-space: nowrap;
 }
 
 .capa h1 {
   font-family: var(--serif);
-  font-size: 13px;
+  font-size: 23px;
   font-weight: 500;
   letter-spacing: 0.32em;
   color: #4A5568;
@@ -941,7 +974,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 
 .capa .os-numero {
   font-family: var(--serif);
-  font-size: 64px;
+  font-size: 74px;
   font-weight: 800;
   color: var(--azul-marinho);
   letter-spacing: -0.02em;
@@ -949,7 +982,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .capa .os-numero::before {
   content: 'Nº ';
-  font-size: 28px;
+  font-size: 38px;
   vertical-align: middle;
   color: var(--dourado);
   font-weight: 600;
@@ -957,7 +990,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 
 .capa-embarcacao {
   font-family: var(--serif);
-  font-size: 28px;
+  font-size: 38px;
   font-weight: 600;
   font-style: italic;
   color: var(--azul-marinho);
@@ -965,7 +998,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   letter-spacing: 0.005em;
 }
 .capa-modelo {
-  font-size: 14px;
+  font-size: 24px;
   color: #4A5568;
   margin-top: 4px;
   letter-spacing: 0.04em;
@@ -976,12 +1009,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
   justify-content: center;
   gap: 36px;
   margin-top: 36px;
-  font-size: 12.5px;
+  font-size: 22.5px;
   color: #4A5568;
 }
 .capa-meta-item { text-align: center; }
 .capa-meta-item .label {
-  font-size: 9.5px;
+  font-size: 19.5px;
   letter-spacing: 0.20em;
   text-transform: uppercase;
   color: #6C757D;
@@ -991,7 +1024,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .capa-meta-item .value {
   font-weight: 600;
   color: #000000;
-  font-size: 13px;
+  font-size: 23px;
 }
 
 /* SEÇÕES DO RELATÓRIO */
@@ -1001,11 +1034,11 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .r-section-title {
   font-family: var(--serif);
-  font-size: 22px;
+  font-size: 30px;
   font-weight: 700;
   color: var(--azul-marinho);
-  margin-bottom: 18px;
-  padding-bottom: 10px;
+  margin-bottom: 22px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--azul-marinho);
   display: flex;
   align-items: baseline;
@@ -1014,7 +1047,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .r-section-title::before {
   content: attr(data-num);
-  font-size: 12px;
+  font-size: 18px;
   letter-spacing: 0.18em;
   color: var(--dourado);
   font-weight: 700;
@@ -1031,11 +1064,11 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .r-resumo-executivo {
   background: linear-gradient(180deg, #FBFBFB 0%, #F5F5F5 100%);
   border-left: 4px solid var(--turquesa);
-  padding: 26px 30px;
+  padding: 28px 32px;
   font-family: 'Source Sans 3', 'Inter', system-ui, sans-serif;
   font-style: normal;
   font-weight: 600;
-  font-size: 15.5px;
+  font-size: 21.5px;
   line-height: 1.75;
   color: #000000;
   letter-spacing: 0;
@@ -1045,15 +1078,15 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .r-meta-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 20px;
 }
 .r-meta-table td {
-  padding: 11px 14px;
+  padding: 13px 16px;
   border-bottom: 1px solid #E5E7EB;
   vertical-align: top;
 }
 .r-meta-table td:first-child {
-  font-size: 11px;
+  font-size: 16px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #6C757D;
@@ -1083,16 +1116,16 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .r-intervencao-titulo {
   font-family: var(--serif);
-  font-size: 18px;
+  font-size: 25px;
   font-weight: 700;
   color: var(--azul-marinho);
 }
 .r-intervencao-status {
-  font-size: 10.5px;
+  font-size: 16px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   font-weight: 700;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 3px;
 }
 
@@ -1111,30 +1144,20 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .r-bloco-tecnico {
   border-top: 3px solid var(--azul-marinho);
 }
-.r-bloco-proprietario {
-  border-top: 3px solid var(--turquesa);
-}
 .r-bloco-label {
-  font-size: 11px;
+  font-size: 16.5px;
   letter-spacing: 0.20em;
   text-transform: uppercase;
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .r-bloco-tecnico .r-bloco-label { color: var(--azul-marinho); }
-.r-bloco-proprietario .r-bloco-label { color: var(--turquesa); }
 .r-bloco p {
-  font-size: 14.5px;
+  font-size: 20.5px;
   line-height: 1.75;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .r-bloco p:last-child { margin-bottom: 0; }
-.r-bloco-proprietario p {
-  font-family: 'Source Sans 3', 'Inter', system-ui, sans-serif;
-  font-style: normal;
-  font-size: 14.5px;
-  line-height: 1.75;
-}
 
 .r-foto-galeria {
   display: grid;
@@ -1166,38 +1189,33 @@ input, textarea, select { font-family: inherit; color: inherit; }
   max-height: 380px;
 }
 .r-foto-cap {
-  padding: 14px 6px 6px;
-  font-size: 13.5px;
+  padding: 16px 8px 8px;
+  font-size: 19px;
   line-height: 1.6;
 }
 .r-foto-cap-tec {
   font-weight: 600;
   color: var(--azul-marinho);
-  margin-bottom: 6px;
-}
-.r-foto-cap-prop {
-  color: #2A2A2A;
-  font-style: normal;
-  font-family: 'Source Sans 3', 'Inter', system-ui, sans-serif;
+  margin-bottom: 8px;
 }
 
 .r-checklist {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13.5px;
+  font-size: 19px;
 }
 .r-checklist th {
   background: var(--azul-marinho);
   color: #FFFFFF;
-  padding: 11px 12px;
+  padding: 12px 14px;
   text-align: left;
-  font-size: 11.5px;
+  font-size: 17px;
   letter-spacing: 0.10em;
   text-transform: uppercase;
   font-weight: 600;
 }
 .r-checklist td {
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid #E5E7EB;
   vertical-align: top;
 }
@@ -1205,19 +1223,19 @@ input, textarea, select { font-family: inherit; color: inherit; }
   background: rgba(20, 134, 149, 0.08);
   color: var(--turquesa);
   font-family: var(--serif);
-  font-size: 11.5px;
+  font-size: 17px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  padding: 10px 12px;
+  padding: 11px 14px;
   border-top: 2px solid var(--turquesa);
   border-bottom: 1px solid var(--turquesa);
 }
 .r-status-tag {
   display: inline-block;
-  padding: 3px 10px;
+  padding: 4px 11px;
   border-radius: 3px;
-  font-size: 10.5px;
+  font-size: 16px;
   letter-spacing: 0.06em;
   font-weight: 700;
   text-transform: uppercase;
@@ -1243,13 +1261,13 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .r-pecas {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 19px;
 }
 .r-pecas th {
   background: #F5F5F5;
-  padding: 10px 14px;
+  padding: 11px 16px;
   text-align: left;
-  font-size: 10.5px;
+  font-size: 16.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   font-weight: 700;
@@ -1257,7 +1275,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border-bottom: 1px solid var(--azul-marinho);
 }
 .r-pecas td {
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid #E5E7EB;
   vertical-align: middle;
 }
@@ -2256,6 +2274,17 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 00-3 3v7a3 3 0 006 0V5a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8" stroke-linecap="round"/></svg>
             </button>
           </div>
+
+          <!-- Evidências fotográficas das observações finais — mesma UX dos itens
+               de serviço, paralela e independente. Útil para registrar pontos
+               de atenção identificados durante a inspeção que não geraram OS
+               específica mas que merecem documentação visual. -->
+          <div style="margin-top:20px">
+            <label class="field-label" style="display:block;margin-bottom:8px">Evidências Fotográficas das Observações</label>
+            <div class="fotos-grid" id="observacoesFotosGrid">
+              <!-- preenchida por renderObservacoesFotos() -->
+            </div>
+          </div>
         </div>
 
         <!-- 5. ASSINATURA DO CLIENTE -->
@@ -2657,6 +2686,9 @@ function gerarOSDefault(numero = '') {
       anoEmbarcacao: '',
       proprietario: '', responsavelBordo: '', tecnicoWonder: '',
       observacoes: '',
+      // Fotos anexas às observações finais — paralelas às fotos de cada item.
+      // Cada elemento: { id, legendaTecnica? } com dataUrl no IndexedDB.
+      observacoesFotos: [],
       assinaturaCliente: { nome: '', documento: '', dataUrl: '', salvo: false, dataSalvamento: '' },
       relatorioFinalizado: false
     },
@@ -2732,6 +2764,9 @@ function carregarEstado() {
           os.meta.assinaturaCliente = { nome: '', documento: '', dataUrl: '', salvo: false, dataSalvamento: '' };
         }
         if (typeof os.meta.relatorioFinalizado === 'undefined') os.meta.relatorioFinalizado = false;
+        // Fotos do campo Observações — adicionado em release posterior.
+        // OS antigas carregam vazio.
+        if (!Array.isArray(os.meta.observacoesFotos)) os.meta.observacoesFotos = [];
         // Migração do checklist: SEMPRE re-mapeia por texto do item para garantir
         // que reordenações do CHECKLIST_DEFAULT (mesmo com length idêntico) sejam
         // aplicadas. Itens antigos cujo texto não existe mais são silenciosamente
@@ -2774,199 +2809,16 @@ function indicarAutoSave() {
 function osAtual() { return state.os[state.currentOSId]; }
 
 /* ============================================================
-   DICIONÁRIO DE TRADUÇÃO JARGÃO → VALOR
+   TRADUÇÃO PARA PROPRIETÁRIO — REMOVIDA
+   ------------------------------------------------------------
+   Camada de "tradução automática" do registro técnico para
+   linguagem leiga foi removida por feedback de campo (OS 4595):
+   produzia texto genérico/impreciso e marcadores como
+   "[Tradução automática parcial — revisar manualmente.]" que
+   comprometiam a credibilidade do laudo entregue ao proprietário.
+   O relatório agora contém APENAS o registro técnico auditável
+   redigido pelo operador.
    ============================================================ */
-const DICIONARIO = [
-  // Padrões de frase (alta prioridade — match parcial)
-  { regex: /rel[éê]\s*(zm\s*404|auxiliar|de\s*partida).*?queimad[oa]/i,
-    proprietario: 'A queima de um pequeno acionador elétrico interrompeu a pressurização da bomba hidráulica do leme, deixando o Piloto Automático inoperante e a direção severamente enrijecida — comprometendo o conforto e a segurança das navegações de cruzeiro.' },
-  { regex: /antena\s*(de\s*)?gps\s*(rs[-\s]?125|rs[-\s]?150)?.*?(emi|interfer[êe]ncia).*?starlink/i,
-    proprietario: 'Os instrumentos de navegação perdiam intermitentemente o sinal de localização devido a uma forte interferência de rádio causada pela proximidade da antena de internet Starlink, comprometendo a precisão de posição em rotas costeiras e noturnas.' },
-  { regex: /(rg[-\s]?6).*?(75\s*ohms?).*?(rg[-\s]?58|50\s*ohms?)/i,
-    proprietario: 'Foi identificado um erro grave na instalação original: utilizou-se cabo comum de antena de televisão em lugar do cabo específico de radiofrequência marítima, reduzindo drasticamente o alcance da transmissão de voz no rádio VHF — equipamento essencial para chamadas de socorro e coordenação portuária.' },
-  { regex: /(saliniza[cç][aã]o|maresia|corros[aã]o).*?(terminais?|barramento|bateria|cabos)/i,
-    proprietario: 'A corrosão severa gerada pela maresia comprometia a passagem de energia entre o banco de baterias e os instrumentos principais, com risco de queda total de tensão, falha dos displays em manobra e potencial centelhamento em ambiente de praça de máquinas.' },
-  { regex: /nmea\s*2000.*?(terminador|conector|oxidad)/i,
-    proprietario: 'A espinha dorsal digital da embarcação — responsável por transportar dados vitais entre motores, sensores e telas do painel — apresentava instabilidade por oxidação e ausência de componente estabilizador, sujeitando o piloto a leituras intermitentes em manobras críticas.' },
-  { regex: /b[uú]ssola.*?(no\s*compass|extraviada|perdida|sem\s*reconhecimento)/i,
-    proprietario: 'O sensor de orientação que permite ao Piloto Automático manter rumo verdadeiro não foi localizado a bordo, impedindo qualquer navegação automatizada e exigindo timoneiro permanente ao leme em todas as travessias.' },
-  { regex: /seatalk\s*failure|conflito.*?seatalk|tridata.*?conflito/i,
-    proprietario: 'Um display auxiliar gerava conflito de comunicação na rede de dados antiga da embarcação, derrubando os instrumentos vizinhos e privando a tripulação de leituras de profundidade, vento e velocidade nos pontos de governo.' },
-  { regex: /fus[íi]vel.*?(queimad|substitui)/i,
-    proprietario: 'A queima de um fusível na linha de alimentação da rede de instrumentos retirou simultaneamente displays auxiliares de operação — falha crítica em condições de pouca visibilidade, restabelecida com a substituição do componente protetor.' },
-  { regex: /backlight.*?queimad|infiltra[çc][aã]o.*?display/i,
-    proprietario: 'O retroiluminado de uma das telas multifuncionais foi danificado por infiltração de umidade, comprometendo a leitura à noite e em dias de forte luz solar — situação crítica para a interpretação de cartas náuticas e radar.' },
-  { regex: /bot[oõ]eira.*?bateria.*?(servi[çc]o|sem\s*funcionamento)/i,
-    proprietario: 'O acionamento da bateria de serviços — responsável por toda a eletrônica de bordo — encontrava-se inoperante, situação que poderia deixar a embarcação completamente sem energia caso a bateria de partida falhasse durante a navegação.' },
-  { regex: /(emi|interfer[êe]ncia\s*eletromagn[ée]tica)/i,
-    proprietario: 'Foi diagnosticada interferência eletromagnética entre dispositivos próximos a bordo, fenômeno que degrada silenciosamente a precisão dos instrumentos e exige reposicionamento físico para garantir a integridade dos sinais de radiofrequência.' },
-  { regex: /vswr|pot[êe]ncia\s*refletida/i,
-    proprietario: 'A análise revelou alta potência refletida no sistema de antena do rádio VHF, indicando perda significativa de transmissão — o que reduzia o alcance efetivo da comunicação em situações de emergência.' },
-  { regex: /coaxial.*?(incorret|inadequad|errad)/i,
-    proprietario: 'A linha de transmissão da antena estava executada com cabeamento fora da especificação marítima, falha comum em instalações apressadas, que silenciosamente compromete o desempenho dos rádios essenciais de bordo.' },
-  { regex: /atualiza[çc][aã]o.*?firmware|software.*?desatualizad/i,
-    proprietario: 'O firmware dos equipamentos foi atualizado para a versão mais recente, garantindo correção de bugs conhecidos, compatibilidade entre componentes e acesso aos recursos mais modernos de cartografia e navegação.' },
-  { regex: /configura[çc][aã]o.*?(idioma|portugu[êe]s|carta|sonda|radar|unidades)/i,
-    proprietario: 'Os multifuncionais foram criteriosamente reconfigurados em português, com layout de cartas, radar e sonda otimizado para a leitura intuitiva pela tripulação, melhorando a tomada de decisão em manobras e travessias.' }
-];
-
-const DICIONARIO_TERMOS = {
-  'mfd': 'tela multifuncional de navegação',
-  'multifuncional': 'tela principal de navegação do painel',
-  'vswr': 'potência refletida no sistema de antena',
-  'emi': 'interferência eletromagnética entre equipamentos',
-  'nmea 2000': 'rede digital NMEA 2000 que conecta motores, sensores e telas',
-  'nmea 0183': 'rede de comunicação NMEA 0183 da geração anterior',
-  'seatalk': 'rede de dados Raymarine de geração anterior',
-  'raynet': 'rede de comunicação Ethernet Raymarine',
-  'onenet': 'novo padrão Ethernet marítimo NMEA',
-  'ais': 'sistema de identificação automática de embarcações',
-  'gmdss': 'sistema mundial de socorro e segurança marítima',
-  'epirb': 'transmissor de socorro automático',
-  'awg': 'bitola padronizada de cabo elétrico AWG',
-  'piloto automático': 'sistema de piloto automático que mantém a embarcação em rumo sem intervenção humana',
-  'salinização': 'corrosão acumulada pela ação da maresia',
-  'starlink': 'antena de internet via satélite',
-  'transdutor': 'sensor de profundidade e temperatura submersa',
-  'bonding': 'malha de aterramento contra corrosão galvânica',
-  'sikaflex': 'selante naval de alta performance'
-};
-
-const FECHAMENTOS_VALOR = {
-  'Piloto Automático': [
-    'Restabelecida a confiabilidade do leme automatizado, atributo central das navegações de cruzeiro de longa duração e fator determinante para a redução de fadiga da tripulação em travessias.',
-    'A correção devolve à embarcação o conforto operacional esperado de um ativo deste padrão, eliminando a necessidade de timoneiro permanente em mar aberto.'
-  ],
-  'Antena GPS': [
-    'A precisão da posição volta a ser plena, condição inegociável para navegação noturna, manobras de aproximação a marina e segurança da família a bordo.',
-    'Garante que cartografia, radar e Piloto Automático recebam coordenadas confiáveis em qualquer condição de céu — pré-requisito de toda navegação responsável.'
-  ],
-  'Rádio VHF': [
-    'O sistema de comunicação salva-vidas retorna à plenitude operacional, condição crítica para chamadas de socorro, coordenação com capitania e troca de tráfego portuário.',
-    'A transmissão limpa e o alcance correto garantem que pedidos de auxílio sejam ouvidos por embarcações próximas e estações costeiras a uma distância de segurança adequada.'
-  ],
-  'Antena VHF': [
-    'O sistema de comunicação salva-vidas retorna à plenitude operacional, condição crítica para chamadas de socorro, coordenação com capitania e troca de tráfego portuário.',
-    'A transmissão limpa e o alcance correto garantem que pedidos de auxílio sejam ouvidos por embarcações próximas e estações costeiras a uma distância de segurança adequada.'
-  ],
-  'Radar': [
-    'A capacidade de detecção de tráfego marítimo e formações meteorológicas é restaurada, recurso decisivo em condições de visibilidade reduzida e navegação noturna.',
-    'A camada de proteção anti-colisão volta a operar em conformidade com as diretrizes CIRM, somando-se ao conjunto de redundâncias de segurança a bordo.'
-  ],
-  'Sonda / Transdutor': [
-    'A leitura de profundidade volta a ser confiável, condição inegociável para a aproximação segura a fundeadouros, marinas e canais de pouca lâmina d\'água.',
-    'A integridade do transdutor preserva o casco e os hélices contra avaria por toque de fundo, classe de sinistro de altíssimo custo para um ativo desta categoria.'
-  ],
-  'Banco de Baterias': [
-    'O fluxo elétrico volta a chegar com integridade aos instrumentos críticos, eliminando o risco de apagão sistêmico em mar aberto.',
-    'A intervenção previne curto-circuito em ambiente de praça de máquinas — categoria de avaria que pode escalar a sinistro patrimonial total.'
-  ],
-  'Distribuição de Energia DC': [
-    'A integridade da distribuição de corrente contínua é restabelecida, eliminando aquecimento anômalo, perdas de tensão e o risco de centelhamento em ambiente de praça de máquinas.',
-    'A correção mantém a embarcação aderente às boas práticas ABYC, preservando tanto a operação quanto o valor patrimonial do ativo.'
-  ],
-  'Rede NMEA 2000': [
-    'A espinha dorsal digital da embarcação volta a operar com integridade, garantindo que motores, sensores e telas troquem dados sem latência ou perda — condição essencial em manobras de proximidade.',
-    'A intervenção restitui a aderência ao padrão NMEA 0400, requisito de instalação que protege o investimento em eletrônica embarcada.'
-  ],
-  'Rede SeaTalk / SeaTalkNG': [
-    'A rede de dados auxiliar volta a operar de modo limpo, devolvendo à tripulação leituras precisas de profundidade, vento e velocidade nos pontos de governo.',
-    'A correção elimina a latência entre instrumentos e Piloto Automático, refinando a resposta em manobras que exigem precisão de poucos metros.'
-  ],
-  'MFD Raymarine': [
-    'A tela principal de navegação retorna à operação plena, com toque, retroiluminação e comunicação de rede em conformidade com o padrão de fábrica.',
-    'A intervenção preserva o investimento em eletrônica embarcada e garante a leitura clara de cartografia mesmo sob forte luz solar.'
-  ],
-  'MFD Garmin': [
-    'A tela principal de navegação retorna à operação plena, com toque, retroiluminação e comunicação de rede em conformidade com o padrão de fábrica.',
-    'A intervenção preserva o investimento em eletrônica embarcada e garante a leitura clara de cartografia mesmo sob forte luz solar.'
-  ],
-  'Bússola Eletrônica': [
-    'O sensor que orienta o Piloto Automático e os MFDs volta a fornecer rumo verdadeiro, restituindo a precisão de cabeçamento essencial às navegações automatizadas.',
-    'A integridade da leitura de proa elimina os erros sistemáticos que se acumulavam silenciosamente no traçado de rotas longas.'
-  ],
-  'Internet Satelital (Starlink / V-SAT)': [
-    'A conectividade satelital volta a operar sem comprometer os instrumentos críticos da navegação, equilibrando comodidade e segurança.',
-    'O reposicionamento elimina a interferência eletromagnética que degradava silenciosamente a precisão do GPS — atendendo às melhores práticas de instalação náutica.'
-  ],
-  'AIS': [
-    'A camada de identificação de tráfego marítimo volta a operar em conformidade plena, ampliando o horizonte de consciência situacional do timoneiro em rotas movimentadas.',
-    'A integridade do AIS reforça a segurança preventiva contra colisão, somando-se ao radar como redundância obrigatória em embarcações de luxo.'
-  ]
-};
-
-const FECHAMENTO_GENERICO = [
-  'A intervenção devolve à embarcação a confiabilidade operacional esperada de um ativo deste padrão, com benefício direto na segurança da tripulação e na preservação do investimento.',
-  'Concluída a correção, o sistema retorna à operação plena, restituindo o conforto e a previsibilidade que justificam o investimento em eletrônica embarcada de alto desempenho.'
-];
-
-function traduzirParaProprietario(textoTecnico, sistema) {
-  if (!textoTecnico || !textoTecnico.trim()) return '';
-  const texto = textoTecnico.trim();
-
-  // Hash simples baseado no conteúdo, usado para escolher fechamento de
-  // valor de modo determinístico — duas regenerações da mesma intervenção
-  // produzem o mesmo texto, evitando confusão durante revisão iterativa.
-  function hashStr(s) {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) {
-      h = ((h << 5) - h) + s.charCodeAt(i);
-      h |= 0;
-    }
-    return Math.abs(h);
-  }
-  const seed = hashStr(texto + '|' + (sistema || ''));
-  const escolherFechamento = (lista) => lista[seed % lista.length];
-
-  // 1. Tenta match com padrões de frase
-  for (const padrao of DICIONARIO) {
-    if (padrao.regex.test(texto)) {
-      const fechamento = sistema && FECHAMENTOS_VALOR[sistema]
-        ? FECHAMENTOS_VALOR[sistema][0]
-        : FECHAMENTO_GENERICO[0];
-      return padrao.proprietario + ' ' + fechamento;
-    }
-  }
-
-  // 2. Substitui termos individuais em UMA ÚNICA PASSADA — evita cascata
-  //    (ordenamos do termo mais longo ao mais curto para que "nmea 2000" tenha
-  //    prioridade sobre eventual "nmea", e usamos regex composta com alternação
-  //    para que cada caractere do texto seja examinado uma única vez).
-  let aplicouTermo = false;
-  const termos = Object.keys(DICIONARIO_TERMOS).sort((a, b) => b.length - a.length);
-  const escapados = termos.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const reComposta = new RegExp('\\b(' + escapados.join('|') + ')\\b', 'gi');
-  const traduzido = texto.replace(reComposta, (match, _grupo, offset, str) => {
-    aplicouTermo = true;
-    const chave = match.toLowerCase();
-    let traducao = DICIONARIO_TERMOS[chave] || match;
-    // Capitaliza a tradução APENAS quando o termo aparece em início de frase
-    // (offset 0, ou após ponto/exclamação/interrogação). Nomes próprios em
-    // meio de frase como "da Starlink" mantêm a tradução em minúscula
-    // ("da antena de internet via satélite") — concordância natural.
-    const ehInicioFrase = offset === 0 || /[.!?]\s*$/.test(str.slice(0, offset));
-    if (ehInicioFrase && traducao.length > 0) {
-      traducao = traducao[0].toUpperCase() + traducao.slice(1);
-    }
-    return traducao;
-  });
-
-  const fechamento = sistema && FECHAMENTOS_VALOR[sistema]
-    ? escolherFechamento(FECHAMENTOS_VALOR[sistema])
-    : escolherFechamento(FECHAMENTO_GENERICO);
-
-  if (aplicouTermo) {
-    return traduzido + ' ' + fechamento;
-  }
-
-  // 3. Não há match — devolve marcador para revisão manual + fechamento de valor
-  return traduzido + ' [Tradução automática parcial — revisar manualmente.] ' + fechamento;
-}
-
-function gerarLegendaContextual(legendaTec, sistema) {
-  if (!legendaTec || !legendaTec.trim()) return '';
-  return traduzirParaProprietario(legendaTec, sistema);
-}
 
 function gerarResumoExecutivo(os) {
   const itens = os.itens || [];
@@ -3753,27 +3605,246 @@ async function aplicarRecorte() {
     fr.onload = () => r(fr.result);
     fr.readAsDataURL(blob);
   });
-  // Persistir no IndexedDB e atualizar state
+  // Persistir no IndexedDB e atualizar state.
+  // itemId === '__observacoes__' indica recorte vindo da galeria das
+  // observações finais; nos demais casos, é uma foto de item de serviço.
   const os = osAtual();
-  const it = os.itens.find(i => i.id === itemId);
-  const foto = it.fotos.find(f => f.id === fotoId);
+  let foto, sistemaTag;
+  if (itemId === '__observacoes__') {
+    if (!Array.isArray(os.meta.observacoesFotos)) os.meta.observacoesFotos = [];
+    foto = os.meta.observacoesFotos.find(f => f.id === fotoId);
+    sistemaTag = 'observacoes';
+  } else {
+    const it = os.itens.find(i => i.id === itemId);
+    if (!it) { toast('Item não encontrado.'); return; }
+    foto = it.fotos.find(f => f.id === fotoId);
+    sistemaTag = it.sistema || '';
+  }
+  if (!foto) { toast('Foto não encontrada.'); return; }
   if (foto.dataUrl) {
     foto.dataUrl = dataUrl;
   } else {
-    const ok = await idbSalvarFoto({ id: foto.id, dataUrl, sistema: it.sistema || '', criadoEm: new Date().toISOString() });
+    const ok = await idbSalvarFoto({ id: foto.id, dataUrl, sistema: sistemaTag, criadoEm: new Date().toISOString() });
     if (!ok) foto.dataUrl = dataUrl;
   }
   _fotosCache.set(fotoId, dataUrl);
   os.atualizadoEm = new Date().toISOString();
-  salvarEstado();
+  flushSalvarEstado();
   fecharRecorte();
-  renderItens();
+  if (itemId === '__observacoes__') {
+    renderObservacoesFotos();
+  } else {
+    renderItens();
+  }
   toast('Foto recortada com sucesso.');
 }
 
 function fecharRecorte() {
   document.getElementById('modalRecorte').classList.remove('show');
   _recorteCtx = null;
+}
+
+/* ============================================================
+   FOTOS DAS OBSERVAÇÕES FINAIS
+   Paralelo às fotos por item de serviço — mesma persistência em
+   IndexedDB, mesma UX de upload/remover/girar/recortar/legendar.
+   Difere apenas no contêiner: meta.observacoesFotos[].
+   ============================================================ */
+function renderObservacoesFotos() {
+  const cont = document.getElementById('observacoesFotosGrid');
+  if (!cont) return;
+  const os = osAtual();
+  if (!os) { cont.innerHTML = ''; return; }
+  if (!Array.isArray(os.meta.observacoesFotos)) os.meta.observacoesFotos = [];
+  const fotos = os.meta.observacoesFotos;
+
+  cont.innerHTML = fotos.map(f => obsFotoCardHtml(f)).join('') + `
+    <label class="foto-upload-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span>Adicionar foto<br><small style="font-weight:400;opacity:0.7">Câmera ou galeria</small></span>
+      <input type="file" accept="image/*" multiple onchange="adicionarFotoObservacao(event)">
+    </label>
+    <label class="foto-upload-card" style="border-style:dashed">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span>Tirar foto agora<br><small style="font-weight:400;opacity:0.7">Câmera direta</small></span>
+      <input type="file" accept="image/*" capture="environment" onchange="adicionarFotoObservacao(event)">
+    </label>
+  `;
+
+  // Resolve dataUrls pendentes do IndexedDB
+  resolverFotosPendentes();
+}
+
+function obsFotoCardHtml(foto) {
+  let src = foto.dataUrl || _fotosCache.get(foto.id) || '';
+  const precisaCarregar = !src;
+  return `
+    <div class="foto-card">
+      <img src="${src}" class="foto-img" alt="Evidência da observação" data-foto-id="${foto.id}" ${precisaCarregar ? 'data-foto-pending="1"' : ''} ${!src ? 'style="background:var(--linha-suave)"' : ''}>
+      <div class="foto-toolbar">
+        <button class="foto-tool-btn" aria-label="Mover foto para cima" title="Mover para cima" onclick="moverFotoObservacao('${foto.id}',-1)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14"><path d="M18 15l-6-6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="foto-tool-btn" aria-label="Mover foto para baixo" title="Mover para baixo" onclick="moverFotoObservacao('${foto.id}',1)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="foto-tool-btn" aria-label="Girar foto 90°" title="Girar 90° à direita" onclick="girarFotoObservacao('${foto.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 12a9 9 0 11-3-6.7L21 8" stroke-linecap="round"/><path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="foto-tool-btn" aria-label="Recortar foto" title="Recortar" onclick="abrirRecorteFotoObservacao('${foto.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M6 2v14a2 2 0 002 2h14M18 22V8a2 2 0 00-2-2H2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="foto-meta">
+        <textarea
+          data-mic-kind="obsfoto" data-mic-foto="${foto.id}"
+          placeholder="Legenda da evidência (o que mostra a imagem)..."
+          oninput="atualizarFotoObservacao('${foto.id}','legendaTecnica',this.value)">${escapeHtml(foto.legendaTecnica || '')}</textarea>
+        <div class="foto-actions">
+          <button class="btn btn-ghost btn-sm" style="flex:1" onclick="removerFotoObservacao('${foto.id}')">Remover</button>
+          <button class="mic-btn" style="width:38px;height:38px;border-radius:6px;flex:0 0 38px" aria-label="Ditar legenda" onclick="acionarVoz(this, {kind:'obsfoto', fotoId:'${foto.id}'})" title="Ditar legenda">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 2a3 3 0 00-3 3v7a3 3 0 006 0V5a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v3M8 22h8" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function adicionarFotoObservacao(ev) {
+  const files = ev.target.files;
+  if (!files || files.length === 0) return;
+  const os = osAtual();
+  if (!os) return;
+  if (!Array.isArray(os.meta.observacoesFotos)) os.meta.observacoesFotos = [];
+
+  let salvasOK = 0, falhas = 0;
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    try {
+      const dataUrl = await comprimirImagem(file, 1280, 0.7);
+      const fotoId = gerarId('fo', 6);
+      const idbOk = await idbSalvarFoto({
+        id: fotoId, dataUrl, sistema: 'observacoes', criadoEm: new Date().toISOString()
+      });
+      if (idbOk) {
+        _fotosCache.set(fotoId, dataUrl);
+        os.meta.observacoesFotos.push({ id: fotoId, legendaTecnica: '' });
+      } else {
+        os.meta.observacoesFotos.push({ id: fotoId, dataUrl, legendaTecnica: '' });
+      }
+      salvasOK++;
+    } catch (e) {
+      console.error('Erro ao processar foto de observação:', e);
+      falhas++;
+    }
+  }
+  os.atualizadoEm = new Date().toISOString();
+  flushSalvarEstado();
+  renderObservacoesFotos();
+  ev.target.value = '';
+  if (falhas > 0) toast(`${salvasOK} foto(s) adicionada(s), ${falhas} falha(s).`);
+}
+
+async function removerFotoObservacao(fotoId) {
+  const os = osAtual();
+  if (!os || !Array.isArray(os.meta.observacoesFotos)) return;
+  os.meta.observacoesFotos = os.meta.observacoesFotos.filter(f => f.id !== fotoId);
+  _fotosCache.delete(fotoId);
+  await idbExcluirFoto(fotoId);
+  os.atualizadoEm = new Date().toISOString();
+  flushSalvarEstado();
+  renderObservacoesFotos();
+}
+
+function atualizarFotoObservacao(fotoId, campo, valor) {
+  const os = osAtual();
+  if (!os || !Array.isArray(os.meta.observacoesFotos)) return;
+  const f = os.meta.observacoesFotos.find(x => x.id === fotoId);
+  if (!f) return;
+  f[campo] = valor;
+  os.atualizadoEm = new Date().toISOString();
+  salvarEstado();
+}
+
+function moverFotoObservacao(fotoId, delta) {
+  const os = osAtual();
+  if (!os || !Array.isArray(os.meta.observacoesFotos)) return;
+  const arr = os.meta.observacoesFotos;
+  const idx = arr.findIndex(f => f.id === fotoId);
+  if (idx === -1) return;
+  const novoIdx = idx + delta;
+  if (novoIdx < 0 || novoIdx >= arr.length) return;
+  const tmp = arr[idx]; arr[idx] = arr[novoIdx]; arr[novoIdx] = tmp;
+  os.atualizadoEm = new Date().toISOString();
+  flushSalvarEstado();
+  renderObservacoesFotos();
+}
+
+async function girarFotoObservacao(fotoId) {
+  const os = osAtual();
+  if (!os || !Array.isArray(os.meta.observacoesFotos)) return;
+  const foto = os.meta.observacoesFotos.find(f => f.id === fotoId);
+  if (!foto) return;
+  const dataUrl = foto.dataUrl || await resolverDataUrl(foto);
+  if (!dataUrl) { toast('Não foi possível carregar a foto.'); return; }
+  try {
+    const novoDataUrl = await rotacionar90(dataUrl);
+    if (foto.dataUrl) {
+      foto.dataUrl = novoDataUrl;
+    } else {
+      const ok = await idbSalvarFoto({ id: foto.id, dataUrl: novoDataUrl, sistema: 'observacoes', criadoEm: new Date().toISOString() });
+      if (!ok) foto.dataUrl = novoDataUrl;
+    }
+    _fotosCache.set(foto.id, novoDataUrl);
+    os.atualizadoEm = new Date().toISOString();
+    flushSalvarEstado();
+    renderObservacoesFotos();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao girar a foto.');
+  }
+}
+
+// Recorte de foto de observação — reusa o mesmo modal/contexto do recorte
+// dos itens. _recorteCtx ganha um marcador 'observacao' para que aplicarRecorte
+// saiba onde persistir o resultado.
+async function abrirRecorteFotoObservacao(fotoId) {
+  const os = osAtual();
+  if (!os || !Array.isArray(os.meta.observacoesFotos)) return;
+  const foto = os.meta.observacoesFotos.find(f => f.id === fotoId);
+  if (!foto) return;
+  const dataUrl = foto.dataUrl || await resolverDataUrl(foto);
+  if (!dataUrl) { toast('Não foi possível carregar a foto.'); return; }
+
+  _recorteCtx = { itemId: '__observacoes__', fotoId, dataUrl };
+  const modal = document.getElementById('modalRecorte');
+  modal.classList.add('show');
+
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.getElementById('recorteCanvas');
+    const ctx = canvas.getContext('2d');
+    const maxW = Math.min(720, window.innerWidth - 80);
+    const maxH = Math.min(540, window.innerHeight - 220);
+    const ratio = Math.min(maxW / img.width, maxH / img.height, 1);
+    canvas.width = Math.round(img.width * ratio);
+    canvas.height = Math.round(img.height * ratio);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    _recorteCtx.imgEl = img;
+    _recorteCtx.canvas = canvas;
+    _recorteCtx.scale = ratio;
+    const margem = 0.10;
+    _recorteCtx.sel = {
+      x: canvas.width * margem,
+      y: canvas.height * margem,
+      w: canvas.width * (1 - 2 * margem),
+      h: canvas.height * (1 - 2 * margem)
+    };
+    renderRecorte();
+  };
+  img.onerror = () => toast('Erro ao carregar imagem para recorte.');
+  img.src = dataUrl;
 }
 
 function atualizarFoto(itemId, fotoId, campo, valor) {
@@ -3904,9 +3975,10 @@ function excluirOS(id) {
     `Excluir OS ${os.meta.numero || ''}?`,
     'Esta ação não pode ser desfeita. Considere exportar para JSON antes.',
     async () => {
-      // Remove fotos órfãs do IndexedDB
+      // Remove fotos órfãs do IndexedDB (itens + observações)
       const fotosIds = [];
       (os.itens || []).forEach(it => (it.fotos || []).forEach(f => fotosIds.push(f.id)));
+      ((os.meta && os.meta.observacoesFotos) || []).forEach(f => fotosIds.push(f.id));
       for (const fid of fotosIds) {
         _fotosCache.delete(fid);
         await idbExcluirFoto(fid);
@@ -3954,6 +4026,9 @@ async function exportarJSON() {
     for (const f of (it.fotos || [])) {
       if (!f.dataUrl) f.dataUrl = await resolverDataUrl(f);
     }
+  }
+  for (const f of (copia.meta && copia.meta.observacoesFotos) || []) {
+    if (!f.dataUrl) f.dataUrl = await resolverDataUrl(f);
   }
   const blob = new Blob([JSON.stringify(copia, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -4025,14 +4100,17 @@ function importarJSON(ev) {
         relatorioGerado: parsed.relatorioGerado || null
       };
 
+      // Garante array de fotos das observações na OS importada
+      if (!Array.isArray(os.meta.observacoesFotos)) os.meta.observacoesFotos = [];
+
       // Migra dataUrls embutidas no JSON para o IndexedDB, removendo do state em memória
       // para que o localStorage não volte a estourar com fotos grandes.
-      for (const it of os.itens) {
-        for (const f of it.fotos) {
+      const _migrarFotos = async (fotos, sistemaTag) => {
+        for (const f of fotos) {
           if (f.dataUrl) {
             const ok = await idbSalvarFoto({
               id: f.id, dataUrl: f.dataUrl,
-              sistema: it.sistema || '', criadoEm: f.criadoEm || new Date().toISOString()
+              sistema: sistemaTag, criadoEm: f.criadoEm || new Date().toISOString()
             });
             if (ok) {
               _fotosCache.set(f.id, f.dataUrl);
@@ -4040,7 +4118,11 @@ function importarJSON(ev) {
             }
           }
         }
+      };
+      for (const it of os.itens) {
+        await _migrarFotos(it.fotos, it.sistema || '');
       }
+      await _migrarFotos(os.meta.observacoesFotos, 'observacoes');
 
       state.os[os.id] = os;
       state.currentOSId = os.id;
@@ -4235,6 +4317,14 @@ function aplicarTextoDitado(txt) {
     const sep = atual && !atual.endsWith(' ') && !atual.endsWith('\n') ? ' ' : '';
     novoValor = atual + sep + txt;
     f.legendaTecnica = novoValor;
+  } else if (d.kind === 'obsfoto') {
+    if (!Array.isArray(os.meta.observacoesFotos)) return;
+    const f = os.meta.observacoesFotos.find(x => x.id === d.fotoId);
+    if (!f) return;
+    const atual = f.legendaTecnica || '';
+    const sep = atual && !atual.endsWith(' ') && !atual.endsWith('\n') ? ' ' : '';
+    novoValor = atual + sep + txt;
+    f.legendaTecnica = novoValor;
   }
   os.atualizadoEm = new Date().toISOString();
   salvarEstado();
@@ -4251,6 +4341,7 @@ function construirSeletorMic(d) {
   if (d.kind === 'item') return `textarea[data-mic-kind="item"][data-mic-item="${d.itemId}"][data-mic-field="${d.field}"]`;
   if (d.kind === 'meta') return `[data-mic-kind="meta"][data-mic-field="${d.field}"]`;
   if (d.kind === 'foto') return `textarea[data-mic-kind="foto"][data-mic-item="${d.itemId}"][data-mic-foto="${d.fotoId}"]`;
+  if (d.kind === 'obsfoto') return `textarea[data-mic-kind="obsfoto"][data-mic-foto="${d.fotoId}"]`;
   return null;
 }
 
@@ -4715,8 +4806,12 @@ async function gerarPDFBlob() {
   clone.style.width = PDF_RENDER_WIDTH + 'px';
   clone.style.margin = '0';
   clone.style.padding = '56px 64px';
-  clone.style.fontSize = '15px';
-  clone.style.lineHeight = '1.75';
+  // Baseline de 22px para o PDF — herdado pelos parágrafos sem font-size
+  // próprio. Os elementos com tamanho específico no CSS (.r-section-title,
+  // .r-resumo-executivo, .r-meta-table, .r-bloco p, .r-foto-cap) preservam
+  // os seus valores (todos já bumped +4px também).
+  clone.style.fontSize = '22px';
+  clone.style.lineHeight = '1.8';
   clone.style.background = '#FFFFFF';
   clone.style.color = '#000000';
 
@@ -4791,6 +4886,61 @@ async function gerarPDFBlob() {
     g.style.gap = '32px';
   });
 
+  // Capa ocupa página A4 inteira, com conteúdo centralizado vertical e
+  // horizontalmente. ALTURA EXATA = 1391px (área útil da página A4 a 110dpi
+  // com margens 14mm topo/bottom do jsPDF). Compensamos os 56px de
+  // padding-top do .relatorio com margin-top negativo para que a capa
+  // REALMENTE ocupe a primeira página inteira.
+  clone.querySelectorAll('.capa').forEach(c => {
+    c.style.display = 'flex';
+    c.style.flexDirection = 'column';
+    c.style.justifyContent = 'center';
+    c.style.alignItems = 'center';
+    c.style.height = '1391px';
+    c.style.minHeight = '1391px';
+    c.style.maxHeight = '1391px';
+    c.style.marginTop = '-56px';
+    c.style.marginLeft = '0';
+    c.style.marginRight = '0';
+    c.style.marginBottom = '0';
+    c.style.width = '100%';
+    c.style.boxSizing = 'border-box';
+    c.style.textAlign = 'center';   // força text-align:center em todo descendente
+    c.style.pageBreakAfter = 'always';
+    c.style.breakAfter = 'page';
+  });
+
+  // CORREÇÃO DA CENTRALIZAÇÃO HORIZONTAL DO BLOCO "WONDER BOAT"
+  // ----------------------------------------------------------
+  // No PDF anterior, o nome "Wonder Boat" aparecia deslocado para a esquerda
+  // dentro do card. Causa: .capa-marca-text não tinha largura explícita —
+  // assumia largura intrínseca do conteúdo mais largo (a tagline). O
+  // align-items:center do flex pai centralizava o BLOCO de texto, mas o
+  // "Wonder Boat" (mais curto) ficava centralizado dentro de um bloco que
+  // já não cobria toda a largura do card — daí a impressão de desalinhamento.
+  // Solução: forçar width:100% nos elementos do bloco-marca dentro do clone
+  // PDF para que cada filho ocupe a coluna inteira e text-align:center
+  // produza um resultado simétrico real.
+  clone.querySelectorAll('.capa-marca').forEach(m => {
+    m.style.width = '100%';
+    m.style.maxWidth = '520px';
+    m.style.marginLeft = 'auto';
+    m.style.marginRight = 'auto';
+    m.style.boxSizing = 'border-box';
+    m.style.textAlign = 'center';
+  });
+  clone.querySelectorAll('.capa-marca-text, .capa-marca-text .name, .capa-marca-text .sub').forEach(t => {
+    t.style.width = '100%';
+    t.style.display = 'block';
+    t.style.textAlign = 'center';
+    t.style.boxSizing = 'border-box';
+  });
+  clone.querySelectorAll('.capa-marca-img').forEach(img => {
+    img.style.display = 'block';
+    img.style.marginLeft = 'auto';
+    img.style.marginRight = 'auto';
+  });
+
   // Assinatura do cliente — bloco com imagem + info
   clone.querySelectorAll('.r-assinatura-cliente-grid').forEach(g => {
     g.style.display = 'flex';
@@ -4834,6 +4984,68 @@ async function gerarPDFBlob() {
     throw new Error('Falha ao rasterizar relatório: ' + (e.message || e));
   }
 
+  // SLICING INTELIGENTE — antes de remover o wrapper, coleta as posições
+  // verticais (em px do canvas escalado) de cada elemento que NÃO deve ser
+  // cortado entre páginas. Compreende: capa, blocos de intervenção, fotos
+  // individuais e bloco de assinatura. No fatiamento, se a linha de corte
+  // cair dentro de um desses elementos, recuamos a borda inferior para o
+  // topo do elemento, empurrando-o inteiro para a próxima página.
+  // (escala = canvas.width / clone.offsetWidth, em geral ~2 com scale:2)
+  const cloneRect = clone.getBoundingClientRect();
+  const escala = canvas.width / Math.max(1, cloneRect.width);
+  // Tipos de elemento "atômico" (não cortar entre páginas) com prioridade
+  // diferente — fotos NUNCA podem ser cortadas (distorcem ou perdem detalhe
+  // técnico crítico). Outros blocos toleram corte se caso contrário sobraria
+  // muito whitespace.
+  const seletoresAtomicos = [
+    { sel: '.capa', tipo: 'capa' },
+    { sel: '.r-foto', tipo: 'foto' },
+    { sel: '.r-intervencao', tipo: 'intervencao' },
+    { sel: '.r-resumo-executivo', tipo: 'bloco' },
+    { sel: '.r-meta-table', tipo: 'bloco' },
+    { sel: '.r-checklist', tipo: 'bloco' },
+    { sel: '.r-pecas', tipo: 'bloco' },
+    { sel: '.r-assinatura-cliente-section', tipo: 'bloco' },
+    { sel: '.r-assinatura', tipo: 'bloco' },
+    // Linhas individuais das tabelas — quando a tabela inteira é maior que
+    // uma página, o algoritmo cai no fallback que pode cortar uma linha
+    // ao meio. Marcando cada <tr> como atômico, garantimos que pelo menos
+    // cada linha permaneça inteira em uma única página, mesmo que a
+    // tabela seja paginada. Threshold de linha tratado como 'foto'
+    // (rigoroso, 8% — quase sempre empurra a linha para a próxima página
+    // em vez de cortá-la).
+    { sel: '.r-checklist tbody tr', tipo: 'foto' },
+    { sel: '.r-pecas tbody tr', tipo: 'foto' },
+    { sel: '.r-meta-table tr', tipo: 'foto' }
+  ];
+  const intervalosAtomicos = [];
+  for (const { sel, tipo } of seletoresAtomicos) {
+    clone.querySelectorAll(sel).forEach(el => {
+      const r = el.getBoundingClientRect();
+      // Coordenada relativa ao topo do clone, em px do canvas final
+      const topo = (r.top - cloneRect.top) * escala;
+      const fim = (r.bottom - cloneRect.top) * escala;
+      if (fim > topo) intervalosAtomicos.push({ topo, fim, tipo });
+    });
+  }
+  // Ordena por topo crescente — usado em busca linear no loop de slicing
+  intervalosAtomicos.sort((a, b) => a.topo - b.topo);
+
+  // Posição Y dos títulos de seção (.r-section-title). Se o corte cair
+  // logo após um título (dentro de TITULO_ZONA_MORTA), recuamos para
+  // antes do título — evita "título órfão" no fim da página com o
+  // conteúdo da seção começando só na página seguinte.
+  const titulosTopos = [];
+  clone.querySelectorAll('.r-section-title').forEach(el => {
+    const r = el.getBoundingClientRect();
+    titulosTopos.push((r.top - cloneRect.top) * escala);
+  });
+  titulosTopos.sort((a, b) => a - b);
+  // 250px = aproximadamente o tamanho que o título + ~3 linhas de conteúdo
+  // ocupam — se sobra menos que isso na página, vale mais empurrar o
+  // título para a próxima página.
+  const TITULO_ZONA_MORTA = 250 * escala;
+
   // Remove wrapper imediatamente após captura — não precisa mais
   if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
 
@@ -4871,8 +5083,62 @@ async function gerarPDFBlob() {
     throw new Error('Canvas 2D não disponível — navegador não suporta a operação.');
   }
 
+  // Encontra, dado um corte tentativo, o melhor ponto de quebra que não
+  // estilhace nenhum elemento atômico. Retorna o sliceH ajustado.
+  // - Se o corte não atravessa ninguém: mantém pageHeightPx.
+  // - Threshold por tipo:
+  //     foto       → 8%   (NUNCA cortar foto, mesmo que perca espaço)
+  //     intervencao→ 35%  (bloco de texto pode ser cortado se for muito longo)
+  //     capa/bloco → 35%  (idem)
+  // - Se o atomic é maior que uma página inteira, não há como evitar —
+  //   segue o corte original (caso patológico).
+  function calcularSliceH(inicio, sliceMaximo) {
+    const corteTentativo = inicio + sliceMaximo;
+    let melhorTopo = -1;
+    for (const intv of intervalosAtomicos) {
+      if (intv.topo >= corteTentativo) break; // ordenado, dá pra parar
+      const minPct = intv.tipo === 'foto' ? 0.08 : 0.35;
+      if (intv.topo > inicio + sliceMaximo * minPct &&
+          intv.fim > corteTentativo &&
+          (intv.fim - intv.topo) <= sliceMaximo) {
+        if (melhorTopo === -1 || intv.topo < melhorTopo) {
+          melhorTopo = intv.topo;
+        }
+      }
+    }
+    // Se o corte (atual ou ajustado) cair logo após um título de seção,
+    // empurra o título para a próxima página. Sobra de menos de 250px
+    // depois do título raramente comporta conteúdo legível — é o clássico
+    // "título solto no rodapé".
+    let corteAjustado = melhorTopo > 0 ? melhorTopo : corteTentativo;
+    for (const titTopo of titulosTopos) {
+      if (titTopo >= corteAjustado) break;
+      if (titTopo > inicio + sliceMaximo * 0.30 &&
+          titTopo < corteAjustado &&
+          (corteAjustado - titTopo) < TITULO_ZONA_MORTA) {
+        // Recua para o topo do título — o título e seu conteúdo começam
+        // na próxima página juntos.
+        corteAjustado = titTopo;
+      }
+    }
+    if (corteAjustado < corteTentativo) {
+      return Math.floor(corteAjustado - inicio);
+    }
+    return sliceMaximo;
+  }
+
   while (renderedPx < imgHpx) {
-    const sliceH = Math.min(pageHeightPx, imgHpx - renderedPx);
+    const restante = imgHpx - renderedPx;
+    let sliceH;
+    if (restante <= pageHeightPx) {
+      // Última página — não precisa ajustar quebra
+      sliceH = restante;
+    } else {
+      sliceH = calcularSliceH(renderedPx, pageHeightPx);
+      // Salvaguarda: se por algum motivo o ajuste retornou valor não-positivo
+      // ou desprezível, força fatia padrão para evitar loop infinito.
+      if (sliceH < pageHeightPx * 0.2) sliceH = pageHeightPx;
+    }
     pageCanvas.height = Math.ceil(sliceH);
     pageCtx.fillStyle = '#FFFFFF';
     pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
@@ -5388,27 +5654,22 @@ async function gerarRelatorio(opts) {
     </section>
   `;
 
-  // INTERVENÇÕES (DUPLO REGISTRO)
+  // INTERVENÇÕES — apenas registro técnico auditável.
+  // Bloco "Tradução para o Proprietário" foi removido por feedback de campo:
+  // gerava texto genérico/impreciso que comprometia a credibilidade do laudo.
   if (os.itens.length > 0) {
     html += `<section class="r-section"><h2 class="r-section-title" data-num="${proxSecao()}">Diagnóstico e Intervenções Realizadas</h2>`;
     os.itens.forEach((item, idx) => {
       const tecnicoTxt = montarRegistroTecnico(item);
-      const propTxt = montarRegistroProprietario(item);
       html += `
         <div class="r-intervencao">
           <div class="r-intervencao-header">
             <div class="r-intervencao-titulo">${idx + 1}. ${escapeHtml(item.sistema) || 'Sistema'}</div>
             <span class="r-intervencao-status ${tagStatusClass(item.status)}">${escapeHtml(item.status)}</span>
           </div>
-          <div class="r-duplo-registro">
-            <div class="r-bloco r-bloco-tecnico">
-              <div class="r-bloco-label">Registro Técnico — Auditável</div>
-              <div contenteditable="true">${tecnicoTxt}</div>
-            </div>
-            <div class="r-bloco r-bloco-proprietario">
-              <div class="r-bloco-label">Tradução para o Proprietário</div>
-              <div contenteditable="true">${propTxt}</div>
-            </div>
+          <div class="r-bloco r-bloco-tecnico r-bloco-tecnico-largo">
+            <div class="r-bloco-label">Registro Técnico — Auditável</div>
+            <div contenteditable="true">${tecnicoTxt}</div>
           </div>
         </div>
       `;
@@ -5436,15 +5697,16 @@ async function gerarRelatorio(opts) {
     html += `<div class="r-foto-galeria">`;
     fotosTodas.forEach(f => {
       const cap = f.legendaTecnica || '';
-      const capProp = gerarLegendaContextual(cap, f.sistema);
-      // Foto com aspect ratio > 1.7 ou retrato muito estreito (< 0.55) ocupa galeria inteira
+      // Legenda traduzida para o proprietário foi removida por feedback de
+      // campo — o gerador automático produzia "[Tradução automática parcial]"
+      // visível no PDF, comprometendo a leitura. Apenas a legenda técnica
+      // do operador (editável inline) permanece.
       const ehPanoramica = f._aspect && (f._aspect > 1.7 || f._aspect < 0.55);
       html += `
         <div class="r-foto${ehPanoramica ? ' r-foto-panoramica' : ''}">
           <img src="${f.dataUrl || ''}" alt="Evidência">
           <div class="r-foto-cap">
             ${cap ? `<div class="r-foto-cap-tec" contenteditable="true">${escapeHtmlMultilinha(cap)}</div>` : ''}
-            ${capProp ? `<div class="r-foto-cap-prop" contenteditable="true">${escapeHtmlMultilinha(capProp)}</div>` : ''}
           </div>
         </div>
       `;
@@ -5508,11 +5770,38 @@ async function gerarRelatorio(opts) {
     html += `</tbody></table></section>`;
   }
 
-  // OBSERVAÇÕES FINAIS
-  if (m.observacoes && m.observacoes.trim()) {
+  // OBSERVAÇÕES FINAIS — texto + galeria de fotos próprias do bloco
+  const obsFotos = Array.isArray(m.observacoesFotos) ? m.observacoesFotos.slice() : [];
+  // Resolve dataUrls e mede aspect em paralelo (mesmo tratamento da galeria
+  // principal — fotos com aspect extremo ocupam linha inteira).
+  await Promise.all(obsFotos.map(async (f) => {
+    if (!f.dataUrl) f.dataUrl = await resolverDataUrl(f);
+    f._aspect = await medirAspect(f.dataUrl);
+  }));
+  const temObsTexto = m.observacoes && m.observacoes.trim();
+  const temObsFotos = obsFotos.length > 0;
+  if (temObsTexto || temObsFotos) {
     html += `<section class="r-section"><h2 class="r-section-title" data-num="${proxSecao()}">Observações Finais e Próximos Passos</h2>`;
-    const paragrafos = m.observacoes.split(/\n\s*\n|\n/).filter(p => p.trim());
-    paragrafos.forEach(p => { html += `<p contenteditable="true">${escapeHtml(p.trim())}</p>`; });
+    if (temObsTexto) {
+      const paragrafos = m.observacoes.split(/\n\s*\n|\n/).filter(p => p.trim());
+      paragrafos.forEach(p => { html += `<p contenteditable="true">${escapeHtml(p.trim())}</p>`; });
+    }
+    if (temObsFotos) {
+      html += `<div class="r-foto-galeria" style="margin-top:18px">`;
+      obsFotos.forEach(f => {
+        const cap = f.legendaTecnica || '';
+        const ehPanoramica = f._aspect && (f._aspect > 1.7 || f._aspect < 0.55);
+        html += `
+          <div class="r-foto${ehPanoramica ? ' r-foto-panoramica' : ''}">
+            <img src="${f.dataUrl || ''}" alt="Evidência da observação">
+            <div class="r-foto-cap">
+              ${cap ? `<div class="r-foto-cap-tec" contenteditable="true">${escapeHtmlMultilinha(cap)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
     html += `</section>`;
   }
 
@@ -5594,21 +5883,6 @@ function montarRegistroTecnico(item) {
   if (item.acao) partes.push(`<strong>Ação aplicada:</strong> ${escapeHtmlMultilinha(item.acao)}`);
   return partes.map(p => `<p>${p}</p>`).join('') ||
     '<p style="color:#999;font-style:italic">[Item sem detalhamento técnico]</p>';
-}
-
-function montarRegistroProprietario(item) {
-  // Combina sintoma + causa + ação para gerar narrativa traduzida.
-  // Normaliza pontuação final de cada parte antes de juntar — evita ".. "
-  // duplo quando o usuário já encerrou o campo com ponto, e garante que
-  // o regex do dicionário receba sentenças bem formadas.
-  const fontes = [item.causaRaiz, item.acao, item.sintoma]
-    .map(t => (t || '').trim())
-    .filter(Boolean)
-    .map(t => t.replace(/[.!?…\s]+$/u, '')); // remove pontuação final + espaços
-  if (fontes.length === 0) return '<p style="color:#999;font-style:italic">[Sem detalhamento — completar manualmente]</p>';
-  const fonte = fontes.join('. ') + '.';
-  const traduzido = traduzirParaProprietario(fonte, item.sistema);
-  return `<p>${escapeHtmlMultilinha(traduzido)}</p>`;
 }
 
 function tagStatusClass(s) {
@@ -5847,6 +6121,7 @@ function renderTudo() {
     renderMetadados();
     renderItens();
     renderChecklist();
+    renderObservacoesFotos();
     renderAssinatura();
   } else {
     // Sem OS aberta — limpa explicitamente todos os campos para evitar UI fantasma
@@ -5857,6 +6132,8 @@ function renderTudo() {
     }
     const checklistList = document.getElementById('checklistList');
     if (checklistList) checklistList.innerHTML = '';
+    const obsFotosGrid = document.getElementById('observacoesFotosGrid');
+    if (obsFotosGrid) obsFotosGrid.innerHTML = '';
     // Limpa também o relatório, se já estivesse renderizado
     const rel = document.getElementById('relatorio');
     if (rel) {
@@ -6119,26 +6396,27 @@ async function estimarTamanhoPDF(os) {
   if (!os) return { mb: 0, fotos: 0, status: 'ok' };
   let bytesFotos = 0;
   let totalFotos = 0;
-  for (const it of (os.itens || [])) {
-    for (const f of (it.fotos || [])) {
-      totalFotos++;
-      try {
-        // Timeout duro de 800ms por foto — evita travar a estimativa se IndexedDB
-        // tropeçar em alguma. PDF grande conta como 400KB conservador no fallback.
-        const dataUrl = await Promise.race([
-          resolverDataUrl(f),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 800))
-        ]);
-        if (typeof dataUrl === 'string') {
-          // base64 → bytes: comprimento * 0.75 aproximado
-          const base64Part = dataUrl.split(',')[1] || dataUrl;
-          bytesFotos += base64Part.length * 0.75;
-        }
-      } catch (e) {
-        // foto não recuperável conta como média conservadora 400KB
-        bytesFotos += 400 * 1024;
+  // Helper para estimar bytes de uma foto isolada (timeout 800ms cada).
+  const _estimarFoto = async (f) => {
+    totalFotos++;
+    try {
+      const dataUrl = await Promise.race([
+        resolverDataUrl(f),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 800))
+      ]);
+      if (typeof dataUrl === 'string') {
+        const base64Part = dataUrl.split(',')[1] || dataUrl;
+        bytesFotos += base64Part.length * 0.75;
       }
+    } catch (e) {
+      bytesFotos += 400 * 1024;
     }
+  };
+  for (const it of (os.itens || [])) {
+    for (const f of (it.fotos || [])) await _estimarFoto(f);
+  }
+  for (const f of ((os.meta && os.meta.observacoesFotos) || [])) {
+    await _estimarFoto(f);
   }
   const bytesEstimados = (bytesFotos * PDF_FOTO_FATOR_COMPRESSAO) + (PDF_BASE_OVERHEAD_KB * 1024);
   const mb = bytesEstimados / (1024 * 1024);
@@ -6307,6 +6585,11 @@ async function executarAutoBackup() {
         if (!f.dataUrl) {
           try { f.dataUrl = await resolverDataUrl(f); } catch (e) { /* ignora */ }
         }
+      }
+    }
+    for (const f of ((os.meta && os.meta.observacoesFotos) || [])) {
+      if (!f.dataUrl) {
+        try { f.dataUrl = await resolverDataUrl(f); } catch (e) { /* ignora */ }
       }
     }
   }
