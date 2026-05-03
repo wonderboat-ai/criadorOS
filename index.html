@@ -5787,12 +5787,18 @@ async function gerarRelatorio(opts) {
       paragrafos.forEach(p => { html += `<p contenteditable="true">${escapeHtml(p.trim())}</p>`; });
     }
     if (temObsFotos) {
+      // Galeria das observações usa o mesmo layout 2-col da galeria principal
+      // de evidências, MAS sem aplicar a flag "r-foto-panoramica". As fotos
+      // das observações são tipicamente screenshots verticais de celular
+      // (aspect < 0.55) — se classificadas como panorâmicas, ocupariam
+      // linha inteira e ficariam visualmente esticadas. Forçando o card
+      // padrão de 2 colunas, elas aparecem com a mesma proporção das
+      // evidências fotográficas dos itens de serviço.
       html += `<div class="r-foto-galeria" style="margin-top:18px">`;
       obsFotos.forEach(f => {
         const cap = f.legendaTecnica || '';
-        const ehPanoramica = f._aspect && (f._aspect > 1.7 || f._aspect < 0.55);
         html += `
-          <div class="r-foto${ehPanoramica ? ' r-foto-panoramica' : ''}">
+          <div class="r-foto">
             <img src="${f.dataUrl || ''}" alt="Evidência da observação">
             <div class="r-foto-cap">
               ${cap ? `<div class="r-foto-cap-tec" contenteditable="true">${escapeHtmlMultilinha(cap)}</div>` : ''}
