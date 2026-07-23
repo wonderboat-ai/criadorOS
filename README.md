@@ -3,7 +3,7 @@
 > Gerador de Relatórios Técnicos Navais auditáveis, para uso em campo.
 > Aplicativo web autocontido, offline-first, sem backend.
 
-![Versão](https://img.shields.io/badge/vers%C3%A3o-v1.7.1-148695)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-v1.8.1-148695)
 ![Status](https://img.shields.io/badge/status-produ%C3%A7%C3%A3o-1f8a4c)
 ![Licença](https://img.shields.io/badge/uso-interno%20Wonder%20Boat-C9A227)
 
@@ -15,6 +15,11 @@
 
 Basta abrir no navegador. Após a primeira visita, o app fica disponível
 offline — pode ser usado a bordo, em marinas sem sinal, no oceano.
+
+> 📍 Este diretório é uma **cópia de trabalho**. A pasta ligada ao
+> repositório git / GitHub Pages é `G:\Meu Drive\WonderBOAT.AI\Criador de OS`.
+> As duas não sincronizam automaticamente — ver `MEMORIA_PROJETO.md` para
+> detalhes antes de editar.
 
 ---
 
@@ -46,7 +51,7 @@ institucionais auditáveis em PDF conforme as normas **NMEA 0400**, **NMEA 2000*
   nunca cortam entre páginas)
 - 💾 **Auto-backup local** opcional (a cada 15min/30min/1h/2h)
 - 🔒 **LGPD compliant** — dados armazenados apenas localmente no dispositivo
-- 🌓 **Tema claro/escuro** persistido
+- 🌓 **Tema claro/escuro** persistido, com contraste auditado (WCAG AA) em ambos
 - 🔄 **Importação/exportação JSON** para migração entre dispositivos
 
 ---
@@ -63,7 +68,9 @@ criadorOS/
 ├── service-worker.js             # Cache PWA versionado
 ├── manifest.json                 # Manifest PWA
 ├── .nojekyll                     # Desativa Jekyll no GitHub Pages
+├── README.md                     # Este arquivo
 ├── MEMORIA_PROJETO.md            # Contexto técnico completo
+├── .claude/launch.json           # Config do preview local (Python http.server :8731)
 └── .github/workflows/
     └── deploy-pages.yml          # Deploy estático via GitHub Actions
 ```
@@ -163,6 +170,14 @@ auto-suficiente — pode ser importada em qualquer dispositivo.
 
 ## 🎨 Identidade visual
 
+A interface (sidebar, abas, cards, botões, campos, badges) segue o mesmo
+design system da ferramenta irmã **WonderLab** (`criadorOS-LAB`) — sidebar em
+gradiente navy, cards com selo numérico quadrado, botões arredondados,
+badges em formato pill. **O documento do relatório/PDF exportado tem
+identidade visual própria e independente**, calibrada separadamente (capa
+centralizada, tipografia maior para impressão, quebra de página inteligente)
+— não é afetado por mudanças no chrome do app.
+
 | Cor | Uso |
 |---|---|
 | ![#101c2d](https://placehold.co/12x12/101c2d/101c2d.png) `#101c2d` — Azul-marinho | Primário, títulos, navy |
@@ -171,6 +186,14 @@ auto-suficiente — pode ser importada em qualquer dispositivo.
 
 Tipografia: **Playfair Display** (serif · títulos e capa) +
 **Source Sans 3** / **Inter** (sans · corpo e formulários).
+
+> ⚠️ **Nota para dev:** as variáveis `--azul-marinho`/`--dourado`/`--turquesa`
+> são redefinidas dentro de `[data-theme="dark"]` para convergirem no mesmo
+> tom de turquesa (`#44c5d0`). Qualquer regra de tema escuro que use essas
+> variáveis esperando "navy escuro" ou "texto legível sobre destaque" está
+> incorreta — use hex literal ou `var(--azul-marinho-profundo)` (`#000000`,
+> não redefinido). Ver `MEMORIA_PROJETO.md` para o histórico completo desse
+> bug (já corrigido 4× em componentes diferentes).
 
 ---
 

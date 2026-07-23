@@ -53,8 +53,8 @@
   --dourado-claro: var(--turquesa-vivo);
   --linha-discreta: rgba(16, 28, 45, 0.12);
   --linha-suave: rgba(16, 28, 45, 0.06);
-  --sombra-card: 0 1px 2px rgba(16, 28, 45, 0.04), 0 4px 12px rgba(16, 28, 45, 0.06);
-  --sombra-elevada: 0 2px 4px rgba(16, 28, 45, 0.06), 0 12px 32px rgba(16, 28, 45, 0.10);
+  --sombra-card: 0 1px 3px rgba(11, 37, 69, 0.08), 0 8px 24px rgba(11, 37, 69, 0.06);
+  --sombra-elevada: 0 20px 60px rgba(11, 37, 69, 0.28), 0 4px 14px rgba(11, 37, 69, 0.12);
   --serif: 'Playfair Display', 'Source Serif 4', Georgia, 'Times New Roman', serif;
   --sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --bg: var(--off-white);
@@ -62,16 +62,27 @@
   --bg-sidebar: #FFFFFF;
   --texto: var(--grafite);
   --texto-suave: #4A5568;
-  --texto-mais-suave: #718096;
+  /* Escurecido de #718096 para #64748b (auditoria) — o tom original ficava
+     em ~4.02:1 sobre fundo branco, abaixo do mínimo AA de 4.5:1. */
+  --texto-mais-suave: #64748b;
   --acento: var(--azul-marinho);
   --acento-vivo: var(--turquesa);
-  --campo-bg: #FFFFFF;
+  --campo-bg: #FAFAFA;
   --campo-borda: rgba(16, 28, 45, 0.18);
   --campo-borda-foco: var(--turquesa);
   --status-ok: #1F8A4C;
-  --status-aviso: #C7831C;
+  /* Escurecido de #C7831C para #8a5c14 (auditoria) — o tom original não
+     atingia 4.5:1 com o badge .status-paliativo (~2.78:1). Único consumidor
+     desta variável, edição segura sem afetar o relatório/PDF. */
+  --status-aviso: #8a5c14;
   --status-pendente: #B83A2A;
   --status-na: #6C757D;
+  /* Token de raio compartilhado pelos componentes de chrome do app
+     (cards/seções, modal, container do relatório) — alinhado ao
+     design system usado no WonderLab (criadorOS-LAB). Não afeta o
+     documento do relatório/PDF, que mantém seus próprios raios já
+     calibrados. */
+  --radius-app: 14px;
 }
 
 [data-theme="dark"] {
@@ -80,7 +91,9 @@
   --bg-sidebar: #000000;          /* sidebar mais escura para hierarquia */
   --texto: #FAFAFA;
   --texto-suave: #c8bfbf;
-  --texto-mais-suave: rgba(200, 191, 191, 0.65);
+  /* Alfa aumentado de 0.65 para 0.75 (auditoria) — a margem sobre
+     --bg-card no escuro era de apenas ~4.54:1, quase no limite AA. */
+  --texto-mais-suave: rgba(200, 191, 191, 0.75);
   --azul-marinho: #44c5d0;        /* no escuro, o "azul-marinho" semântico vira turquesa para destacar */
   --azul-marinho-claro: #44c5d0;
   --turquesa: #44c5d0;            /* turquesa vivo no escuro para luminância adequada */
@@ -127,9 +140,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
   min-height: 100vh;
 }
 
+/* Sidebar em gradiente navy — alinhado ao design do WonderLab
+   (criadorOS-LAB). Todo texto/borda interno precisa de tratamento
+   "claro sobre escuro" já que o fundo deixou de ser branco. */
 .sidebar {
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--linha-discreta);
+  background: linear-gradient(180deg, var(--azul-marinho) 0%, var(--azul-marinho-claro) 100%);
+  color: #eaf0f7;
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -137,10 +153,16 @@ input, textarea, select { font-family: inherit; color: inherit; }
   height: 100vh;
   overflow-y: auto;
 }
+[data-theme="dark"] .sidebar {
+  /* Cor literal (não var(--azul-marinho)) — no tema escuro essa variável é
+     redefinida para turquesa (destaque de acento), o que quebraria o
+     degradê navy pretendido aqui. */
+  background: linear-gradient(180deg, #050b14 0%, #101c2d 100%);
+}
 
 .sidebar-header {
   padding: 24px 22px 18px;
-  border-bottom: 1px solid var(--linha-suave);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   position: relative;
 }
 
@@ -151,9 +173,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   width: 30px;
   height: 30px;
   border-radius: 6px;
-  border: 1px solid var(--linha-discreta);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   background: transparent;
-  color: var(--texto-suave);
+  color: #dbe6f1;
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -161,9 +183,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   z-index: 5;
 }
 .btn-fechar-sidebar:hover {
-  border-color: var(--dourado);
-  color: var(--dourado);
-  background: rgba(201, 162, 39, 0.08);
+  border-color: var(--turquesa-vivo);
+  color: var(--turquesa-vivo);
+  background: rgba(255, 255, 255, 0.08);
 }
 .btn-fechar-sidebar:active { transform: scale(0.95); }
 
@@ -191,25 +213,31 @@ input, textarea, select { font-family: inherit; color: inherit; }
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.13);
+  padding: 2px;
+  border-radius: 10px;
 }
 
 .brand-mark svg { width: 22px; height: 22px; }
 .brand-img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.capa-marca-img { width: 56px; height: 56px; object-fit: contain; display: block; }
+/* BUGFIX (auditoria): havia uma regra .capa-marca-img duplicada aqui,
+   colidindo com a classe protegida do relatório/PDF (definida em
+   .capa-marca-img na seção RELATÓRIO). Removida — a única definição
+   válida fica no bloco do relatório e não deve ser tocada. */
 
 .brand-text { line-height: 1.1; }
 .brand-text .name {
   font-family: var(--serif);
   font-weight: 700;
   font-size: 17px;
-  color: var(--texto);
+  color: #eaf0f7;
   letter-spacing: 0.02em;
 }
 .brand-text .sub {
   font-size: 10.5px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dourado);
+  color: var(--turquesa-vivo);
   font-weight: 500;
   margin-top: 2px;
 }
@@ -219,7 +247,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   flex-direction: column;
   gap: 8px;
   padding: 16px 18px;
-  border-bottom: 1px solid var(--linha-suave);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .btn {
@@ -227,44 +255,70 @@ input, textarea, select { font-family: inherit; color: inherit; }
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 48px;
-  padding: 12px 16px;
+  min-height: 46px;
+  padding: 11px 15px;
   border: 1px solid var(--linha-discreta);
-  border-radius: 8px;
+  border-radius: 11px;
   background: var(--bg-card);
   color: var(--texto);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.01em;
   transition: all 0.18s ease;
   white-space: nowrap;
 }
-.btn:hover { border-color: var(--azul-marinho); background: var(--bg); }
+.btn:hover { border-color: var(--turquesa); background: var(--bg); }
 .btn-primary {
   background: var(--azul-marinho);
   color: #FFFFFF;
   border-color: var(--azul-marinho);
 }
 .btn-primary:hover { background: var(--azul-marinho-claro); border-color: var(--azul-marinho-claro); }
+/* BUGFIX (auditoria): --azul-marinho vira turquesa no tema escuro, o que
+   deixava o texto branco do botão primário quase ilegível (~2.07:1).
+   Cor literal mantém o preenchimento navy profundo em ambos os temas. */
+[data-theme="dark"] .btn-primary { background: #101c2d; border-color: #101c2d; }
+[data-theme="dark"] .btn-primary:hover { background: #1b2935; border-color: #1b2935; }
 .btn-gold {
-  background: var(--dourado);
-  color: var(--azul-marinho-profundo);
-  border-color: var(--dourado);
+  /* Cor literal (não var(--dourado)) — o tom de marca #148695 não atinge
+     4.5:1 com texto branco (~4.31:1), e no tema escuro a variável vira
+     turquesa vivo (~2.07:1, falha severa). Tom escurecido resolve ambos. */
+  background: #106e79;
+  color: #FFFFFF;
+  border-color: #106e79;
   font-weight: 600;
 }
-.btn-gold:hover { background: var(--dourado-claro); border-color: var(--dourado-claro); }
+.btn-gold:hover { background: #0d5a63; border-color: #0d5a63; }
+[data-theme="dark"] .btn-gold { background: #0e6470; border-color: #0e6470; }
+[data-theme="dark"] .btn-gold:hover { background: #0a4f59; border-color: #0a4f59; }
 .btn-ghost {
   background: transparent;
   border-color: var(--linha-discreta);
 }
 .btn-danger:hover { border-color: var(--status-pendente); color: var(--status-pendente); }
 .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
-.btn-sm { min-height: 38px; padding: 8px 12px; font-size: 13px; }
+.btn-sm { min-height: 38px; padding: 7px 11px; font-size: 13px; border-radius: 9px; }
 .btn-icon {
   min-height: 44px; min-width: 44px;
   padding: 8px;
   display: grid; place-items: center;
 }
+
+/* Botões dentro da sidebar navy precisam de tratamento "claro sobre
+   escuro" — a variante .btn-ghost padrão (escuro sobre claro) é usada
+   na maior parte do app (modais, área de coleta), então a sobrescrita
+   fica escopada apenas ao contexto da sidebar. */
+.sidebar .btn-ghost {
+  color: #dbe6f1;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.sidebar .btn-ghost:hover {
+  border-color: var(--turquesa-vivo);
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+.sidebar .btn-danger:hover { border-color: var(--status-pendente); color: #ffb4ab; }
+.sidebar .btn:not(.btn-primary):not(.btn-gold) { background: rgba(255, 255, 255, 0.06); }
 
 .os-list {
   flex: 1;
@@ -275,42 +329,47 @@ input, textarea, select { font-family: inherit; color: inherit; }
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--texto-mais-suave);
+  color: #8fa6bf;
   font-weight: 600;
   padding: 6px 10px 12px;
 }
 .os-card {
-  padding: 14px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--linha-suave);
-  background: var(--bg-card);
+  padding: 12px 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
   margin-bottom: 8px;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all 0.15s ease;
   position: relative;
 }
-.os-card:hover { border-color: var(--azul-marinho); box-shadow: var(--sombra-card); }
+.os-card:hover { border-color: rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.1); }
 .os-card.active {
-  border-color: var(--dourado);
-  background: linear-gradient(180deg, var(--bg-card) 0%, rgba(201, 162, 39, 0.04) 100%);
-  box-shadow: 0 0 0 1px var(--dourado);
+  border-color: var(--turquesa-vivo);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 1px var(--turquesa-vivo);
 }
 .os-card-num {
   font-family: var(--serif);
   font-weight: 700;
-  font-size: 16px;
-  color: var(--texto);
+  font-size: 15px;
+  color: #eaf0f7;
   letter-spacing: 0.01em;
 }
 .os-card-name {
-  font-size: 13.5px;
-  color: var(--texto-suave);
+  font-size: 13px;
+  color: #c3d2e0;
   margin-top: 2px;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .os-card-meta {
   font-size: 11.5px;
-  color: var(--texto-mais-suave);
+  /* #9bb2ca em vez de #8fa6bf (auditoria) — nos estados :hover/.active do
+     .os-card (overlay branco mais forte) o contraste caía a ~4.36:1. */
+  color: #9bb2ca;
   margin-top: 6px;
   display: flex;
   gap: 10px;
@@ -318,20 +377,31 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .os-card-actions {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid var(--linha-suave);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
-.os-card-actions .btn { min-height: 32px; padding: 4px 8px; font-size: 11.5px; flex: 1; }
+.os-card-actions .btn {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  flex: 1;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #dbe6f1;
+}
+.os-card-actions .btn:hover { border-color: var(--turquesa-vivo); background: rgba(255, 255, 255, 0.16); }
+.os-card-actions .btn-danger:hover { border-color: var(--status-pendente); color: #ffb4ab; }
 
 .sidebar-footer {
   padding: 14px 18px;
-  border-top: 1px solid var(--linha-suave);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
   gap: 8px;
   align-items: center;
-  background: var(--bg-sidebar);
+  background: transparent;
 }
 
 /* ============================================================
@@ -347,7 +417,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .main-topbar {
   background: var(--bg-card);
   border-bottom: 1px solid var(--linha-discreta);
-  padding: 14px 28px;
+  padding: 10px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -370,7 +440,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border: none;
   background: transparent;
   border-radius: 7px;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 14px;
   color: var(--texto-suave);
   letter-spacing: 0.01em;
@@ -379,17 +449,18 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .topbar-tab:hover { color: var(--texto); }
 .topbar-tab.active {
-  background: var(--azul-marinho);
-  color: #FFFFFF;
+  background: var(--bg-card);
+  color: var(--azul-marinho);
   box-shadow: var(--sombra-card);
 }
+[data-theme="dark"] .topbar-tab.active { color: var(--turquesa-vivo); }
 
 .topbar-actions { display: flex; gap: 8px; align-items: center; }
 
 .main-content {
   flex: 1;
-  padding: 32px;
-  max-width: 1180px;
+  padding: 18px;
+  max-width: 1080px;
   width: 100%;
   margin: 0 auto;
 }
@@ -400,9 +471,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .section {
   background: var(--bg-card);
   border: 1px solid var(--linha-suave);
-  border-radius: 12px;
-  padding: 28px;
-  margin-bottom: 22px;
+  border-radius: var(--radius-app);
+  padding: 18px;
+  margin-bottom: 18px;
   box-shadow: var(--sombra-card);
 }
 
@@ -411,38 +482,45 @@ input, textarea, select { font-family: inherit; color: inherit; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--linha-suave);
+  margin-bottom: 4px;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .section-title {
   font-family: var(--serif);
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 600;
   color: var(--texto);
   letter-spacing: -0.005em;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
+[data-theme="dark"] .section-title { color: var(--turquesa-vivo); }
 .section-title-num {
-  font-size: 11px;
-  letter-spacing: 0.22em;
   font-family: var(--sans);
+  font-size: 13px;
   font-weight: 700;
-  color: var(--dourado);
-  padding: 4px 10px;
-  border: 1px solid var(--dourado);
-  border-radius: 4px;
-  background: rgba(201, 162, 39, 0.06);
+  color: #FFFFFF;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--azul-marinho);
+  flex-shrink: 0;
 }
+/* color usa --azul-marinho-profundo (preto puro, NÃO redefinido no tema
+   escuro) em vez de --azul-marinho — essa última vira turquesa no dark
+   mode, o que resultaria em texto turquesa sobre fundo turquesa. */
+[data-theme="dark"] .section-title-num { background: var(--turquesa-vivo); color: var(--azul-marinho-profundo); }
 
 .section-subtitle {
   font-size: 13.5px;
   color: var(--texto-mais-suave);
-  margin-top: -8px;
-  margin-bottom: 16px;
+  margin: 6px 0 14px;
 }
 
 .grid {
@@ -455,36 +533,46 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .col-span-2 { grid-column: span 2; }
 .col-full { grid-column: 1 / -1; }
 
-.field { display: flex; flex-direction: column; gap: 6px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
 .field-label {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--texto-suave);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .field-input,
 .field-textarea,
 .field-select {
   width: 100%;
-  padding: 12px 14px;
+  padding: 11px 12px;
   border: 1px solid var(--campo-borda);
   background: var(--campo-bg);
-  border-radius: 8px;
-  font-size: 14.5px;
+  border-radius: 10px;
+  font-size: 15px;
   color: var(--texto);
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
-  min-height: 48px;
+  min-height: 46px;
   font-family: var(--sans);
 }
-.field-textarea { min-height: 96px; resize: vertical; line-height: 1.55; padding: 12px 14px; }
+.field-textarea { min-height: 88px; resize: vertical; line-height: 1.5; padding: 11px 12px; }
+/* BUGFIX (auditoria): placeholder sem regra própria ficava sujeito ao
+   padrão do navegador sobre o novo fundo #FAFAFA. */
+.field-input::placeholder,
+.field-textarea::placeholder {
+  color: var(--texto-mais-suave);
+  opacity: 1;
+}
 .field-input:focus,
 .field-textarea:focus,
 .field-select:focus {
-  outline: none;
+  /* Anel de foco visível em turquesa (auditoria) — o box-shadow anterior
+     era um navy a 8% de opacidade, quase imperceptível sobre #FAFAFA. */
+  outline: 2px solid var(--campo-borda-foco);
+  outline-offset: 1px;
   border-color: var(--campo-borda-foco);
-  box-shadow: 0 0 0 3px rgba(16, 28, 45, 0.08);
+  box-shadow: none;
 }
 
 .field-input.campo-erro,
@@ -501,14 +589,14 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 
 .field-with-mic { position: relative; }
-.field-with-mic .field-textarea { padding-right: 56px; }
+.field-with-mic .field-textarea { padding-right: 54px; }
 .mic-btn {
   position: absolute;
-  right: 8px;
-  top: 8px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  right: 7px;
+  bottom: 7px;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
   border: 1px solid var(--linha-discreta);
   background: var(--bg-card);
   color: var(--texto-suave);
@@ -516,7 +604,13 @@ input, textarea, select { font-family: inherit; color: inherit; }
   place-items: center;
   transition: all 0.18s ease;
 }
-.mic-btn:hover { border-color: var(--azul-marinho); color: var(--azul-marinho); }
+.mic-btn:hover { border-color: var(--turquesa); color: var(--turquesa); }
+/* BUGFIX (auditoria pós-restyle): o mic-btn usado dentro de .foto-actions
+   (legenda de foto) é um filho inline de uma linha flex ao lado do botão
+   "Remover" — mas herdava position:absolute da regra base, sendo puxado
+   para fora do fluxo e sobreposto ao card. Aqui ele participa do flex
+   normalmente, com o tamanho definido via style inline no HTML. */
+.foto-actions .mic-btn { position: static; }
 .mic-btn.recording {
   background: var(--status-pendente);
   color: #FFFFFF;
@@ -536,8 +630,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .item-card {
   background: var(--bg-card);
   border: 1px solid var(--linha-discreta);
+  border-left: 4px solid var(--turquesa);
   border-radius: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   overflow: hidden;
   box-shadow: var(--sombra-card);
   transition: box-shadow 0.18s ease;
@@ -576,6 +671,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   flex-shrink: 0;
   font-family: var(--serif);
 }
+[data-theme="dark"] .item-num { background: var(--turquesa-vivo); color: var(--azul-marinho-profundo); }
 .item-sistema {
   font-family: var(--serif);
   font-size: 17px;
@@ -594,17 +690,23 @@ input, textarea, select { font-family: inherit; color: inherit; }
 
 .item-status-badge {
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 5px 10px;
-  border-radius: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
   white-space: nowrap;
 }
-.status-resolvido { background: rgba(31, 138, 76, 0.12); color: var(--status-ok); }
+/* BUGFIX (auditoria): cores escopadas às próprias classes (não às
+   variáveis --status-ok/--status-na compartilhadas), pois essas variáveis
+   também alimentam classes protegidas do relatório/PDF (.r-tag-passa,
+   .r-tag-na) — alterá-las mudaria a saída do PDF. */
+.status-resolvido { background: rgba(31, 138, 76, 0.12); color: #125E33; }
 .status-paliativo { background: rgba(199, 131, 28, 0.12); color: var(--status-aviso); }
 .status-pendente { background: rgba(184, 58, 42, 0.12); color: var(--status-pendente); }
-.status-recomendacao { background: rgba(108, 117, 125, 0.16); color: var(--status-na); }
+.status-recomendacao { background: rgba(108, 117, 125, 0.16); color: #495057; }
+[data-theme="dark"] .status-resolvido { color: #4CAF7A; }
+[data-theme="dark"] .status-recomendacao { color: #9AA4AD; }
 
 .item-card-body {
   padding: 22px;
@@ -623,9 +725,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .foto-card {
   border: 1px solid var(--linha-discreta);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--bg-card);
   position: relative;
 }
 
@@ -678,14 +780,14 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .foto-actions { display: flex; gap: 6px; margin-top: 6px; }
 
 .foto-upload-card {
-  border: 2px dashed var(--linha-discreta);
-  border-radius: 8px;
+  border: 2px dashed var(--turquesa);
+  border-radius: 10px;
   display: grid;
   place-items: center;
   min-height: 180px;
   cursor: pointer;
-  background: var(--bg);
-  color: var(--texto-mais-suave);
+  background: var(--bg-card);
+  color: var(--texto-suave);
   text-align: center;
   padding: 16px;
   transition: all 0.18s ease;
@@ -693,7 +795,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .foto-upload-card:hover {
   border-color: var(--azul-marinho);
   color: var(--azul-marinho);
-  background: var(--bg-card);
+  background: var(--bg);
 }
 .foto-upload-card svg { width: 28px; height: 28px; margin-bottom: 8px; }
 .foto-upload-card span { font-size: 12.5px; font-weight: 500; }
@@ -705,7 +807,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border-collapse: collapse;
   background: var(--bg-card);
   border: 1px solid var(--linha-suave);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
   margin-top: 8px;
 }
@@ -758,38 +860,50 @@ input, textarea, select { font-family: inherit; color: inherit; }
   font-family: var(--serif);
   font-size: 14px;
   font-weight: 600;
-  color: var(--turquesa);
+  /* #117e8a em vez de var(--turquesa) — o tom de marca (#148695) fica em
+     ~4.31:1 sobre fundo branco, abaixo do mínimo AA de 4.5:1 (auditoria).
+     Borda mantém var(--turquesa): contraste de UI só precisa de 3:1. */
+  color: #117e8a;
   letter-spacing: 0.04em;
   padding: 20px 14px 8px;
   border-bottom: 2px solid var(--turquesa);
   margin-bottom: 4px;
   text-transform: uppercase;
 }
+[data-theme="dark"] .checklist-grupo-titulo { color: var(--turquesa); }
 .checklist-grupo-titulo:first-child { padding-top: 6px; }
 .checklist-label { font-size: 13.5px; font-weight: 500; color: var(--texto); }
 .checklist-status {
   display: flex;
-  gap: 4px;
-  background: var(--bg);
-  border: 1px solid var(--linha-suave);
-  border-radius: 8px;
-  padding: 3px;
+  gap: 0;
+  background: transparent;
+  border: 1px solid var(--linha-discreta);
+  border-radius: 9px;
+  padding: 0;
+  overflow: hidden;
 }
 .checklist-status button {
   flex: 1;
-  padding: 8px 6px;
+  padding: 7px 6px;
   border: none;
-  background: transparent;
-  border-radius: 5px;
-  font-size: 12px;
-  font-weight: 500;
+  border-right: 1px solid var(--linha-discreta);
+  background: var(--bg-card);
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--texto-suave);
-  min-height: 36px;
-  letter-spacing: 0.02em;
+  min-height: 38px;
+  letter-spacing: 0.01em;
 }
-.checklist-status button.active.passa { background: var(--status-ok); color: #FFF; }
+.checklist-status button:last-child { border-right: none; }
+.checklist-status button.active.passa { background: var(--status-ok); color: var(--azul-marinho-profundo); }
 .checklist-status button.active.naopassa { background: var(--status-pendente); color: #FFF; }
 .checklist-status button.active.na { background: var(--status-na); color: #FFF; }
+/* BUGFIX (auditoria): --status-pendente é claro o suficiente no tema escuro
+   (#E07560) para exigir texto escuro; no claro (#B83A2A) o branco já tem
+   contraste adequado. --status-ok falha com texto branco em ambos os temas
+   (por isso a troca acima é incondicional, sem precisar de [data-theme]). */
+[data-theme="dark"] .checklist-status button.active.naopassa { color: var(--azul-marinho-profundo); }
 .checklist-obs {
   width: 100%;
   border: 1px solid var(--campo-borda);
@@ -804,12 +918,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .add-item-btn {
   width: 100%;
   padding: 16px;
-  border: 2px dashed var(--linha-discreta);
+  border: 2px dashed var(--turquesa);
   background: transparent;
-  border-radius: 12px;
+  border-radius: var(--radius-app);
   color: var(--texto-suave);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   margin-top: 4px;
   transition: all 0.18s ease;
 }
@@ -825,14 +939,15 @@ input, textarea, select { font-family: inherit; color: inherit; }
   align-items: center;
   gap: 6px;
   font-size: 12px;
+  font-weight: 600;
   color: var(--azul-marinho);
   background: transparent;
   border: 1px solid var(--linha-discreta);
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: 9px;
   margin-top: 4px;
 }
-.geo-btn:hover { border-color: var(--azul-marinho); }
+.geo-btn:hover { border-color: var(--turquesa); color: var(--turquesa); }
 .geo-btn svg { width: 13px; height: 13px; }
 
 /* ============================================================
@@ -840,7 +955,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
    ============================================================ */
 .relatorio-container {
   background: var(--bg-card);
-  border-radius: 12px;
+  border-radius: var(--radius-app);
   box-shadow: var(--sombra-card);
   border: 1px solid var(--linha-suave);
   overflow: hidden;
@@ -1383,22 +1498,23 @@ input, textarea, select { font-family: inherit; color: inherit; }
 /* ESTADO VAZIO */
 .empty-state {
   text-align: center;
-  padding: 96px 24px;
+  padding: 56px 24px;
   color: var(--texto-mais-suave);
 }
 .empty-state svg {
-  width: 64px;
-  height: 64px;
-  margin-bottom: 20px;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 18px;
   opacity: 0.3;
 }
 .empty-state h3 {
   font-family: var(--serif);
   font-size: 22px;
-  color: var(--texto);
+  color: var(--azul-marinho);
   margin-bottom: 8px;
   font-weight: 600;
 }
+[data-theme="dark"] .empty-state h3 { color: var(--turquesa-vivo); }
 .empty-state p {
   font-size: 14px;
   margin-bottom: 22px;
@@ -1407,25 +1523,25 @@ input, textarea, select { font-family: inherit; color: inherit; }
   margin-right: auto;
 }
 
-/* TOAST */
+/* TOAST — centralizado na base da tela, alinhado ao WonderLab. */
 .toast {
   position: fixed;
+  left: 50%;
   bottom: 24px;
-  right: 24px;
-  background: var(--azul-marinho);
+  background: #16202b;
   color: #FFFFFF;
-  padding: 14px 22px;
-  border-radius: 8px;
-  font-size: 13.5px;
+  padding: 12px 20px;
+  border-radius: 11px;
+  font-size: 14px;
   font-weight: 500;
-  box-shadow: var(--sombra-elevada);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
   z-index: 100;
   opacity: 0;
-  transform: translateY(20px);
+  max-width: 90vw;
+  transform: translate(-50%, 12px);
   transition: all 0.3s ease;
-  border-left: 4px solid var(--dourado);
 }
-.toast.show { opacity: 1; transform: translateY(0); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* MODAL */
 .modal-backdrop {
@@ -1441,18 +1557,23 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .modal-backdrop.show { display: grid; }
 .modal {
   background: var(--bg-card);
-  border-radius: 12px;
-  box-shadow: var(--sombra-elevada);
-  max-width: 480px;
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+  max-width: 560px;
   width: 100%;
-  padding: 28px;
-  border: 1px solid var(--linha-discreta);
+  /* max-height/overflow-y adicionados (auditoria) — antes só o #modalLGPD
+     tinha essa proteção via style inline; agora todo modal tem o mesmo
+     limite de segurança contra conteúdo maior que a viewport. */
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 22px;
+  border: none;
 }
 .modal-lg { max-width: 820px; }
 .recorte-canvas-wrap {
   background: var(--bg);
   border: 1px solid var(--linha-discreta);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 12px;
   display: grid;
   place-items: center;
@@ -1470,8 +1591,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
 /* ASSINATURA DO CLIENTE */
 .assinatura-canvas-wrap {
   position: relative;
-  border: 2px dashed var(--linha-discreta);
-  border-radius: 8px;
+  border: 2px dashed var(--turquesa);
+  border-radius: 10px;
   background: #FFFFFF;
   overflow: hidden;
   aspect-ratio: 800 / 220;
@@ -1525,7 +1646,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   padding: 14px 20px;
   border-radius: 8px;
   border: 1px solid var(--status-ok);
-  color: var(--status-ok);
+  /* #1c8047 em vez de var(--status-ok) — o verde padrão (#1F8A4C) fica em
+     ~4.38:1 sobre fundo branco, abaixo do mínimo AA de 4.5:1 (auditoria). */
+  color: #1c8047;
   font-size: 12.5px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -1534,6 +1657,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   gap: 10px;
   box-shadow: var(--sombra-card);
 }
+[data-theme="dark"] .assinatura-bloqueada-overlay > div { color: var(--status-ok); }
 .assinatura-data-salvamento {
   display: block;
   margin-top: 4px;
@@ -1544,11 +1668,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .modal h3 {
   font-family: var(--serif);
-  font-size: 22px;
-  color: var(--texto);
-  margin-bottom: 8px;
-  font-weight: 600;
+  font-size: 21px;
+  color: var(--azul-marinho);
+  margin-bottom: 6px;
+  font-weight: 700;
 }
+[data-theme="dark"] .modal h3 { color: var(--turquesa-vivo); }
 .modal p {
   font-size: 14px;
   color: var(--texto-suave);
@@ -1557,16 +1682,17 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 
-/* RESPONSIVO */
-@media (max-width: 960px) {
+/* RESPONSIVO — breakpoint alinhado ao WonderLab (880px). */
+@media (max-width: 880px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar {
     position: fixed;
     left: 0; top: 0;
-    width: 320px;
-    z-index: 30;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
+    width: 84%;
+    max-width: 320px;
+    z-index: 90;
+    transform: translateX(-104%);
+    transition: transform 0.25s ease;
     box-shadow: var(--sombra-elevada);
   }
   .sidebar.show { transform: translateX(0); }
@@ -1588,7 +1714,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   display: none;
   background: transparent;
   border: 1px solid var(--linha-discreta);
-  border-radius: 8px;
+  border-radius: 9px;
   width: 44px;
   height: 44px;
   align-items: center;
@@ -1598,10 +1724,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
   transition: all 0.15s ease;
 }
 .menu-toggle:hover {
-  border-color: var(--dourado);
-  color: var(--dourado);
+  border-color: var(--turquesa);
+  color: var(--turquesa);
 }
-@media (max-width: 960px) { .menu-toggle { display: inline-flex; } }
+@media (max-width: 880px) { .menu-toggle { display: inline-flex; } }
 /* Em desktop, aparece quando sidebar está colapsada (reabre o menu) */
 .app-shell.sidebar-colapsada .menu-toggle { display: inline-flex; }
 
@@ -2132,7 +2258,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         Limpar Tudo
       </button>
     </div>
-    <div id="wbVersionLabel" style="font-size:10px;color:var(--texto-mais-suave);text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em;opacity:0.6">build v1.7.1 · 2026-05-03</div>
+    <div id="wbVersionLabel" style="font-size:10px;color:#8fa6bf;text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em">build v1.8.0 · 2026-07-23</div>
   </aside>
 
   <!-- ============================================================
@@ -2417,12 +2543,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 <!-- MODAL LGPD — Termo de tratamento de dados -->
 <!-- Bloqueia primeiro acesso até aceite explícito. Não fecha por click fora. -->
 <div class="modal-backdrop" id="modalLGPD" style="z-index:300">
-  <div class="modal modal-lg" style="max-height:90vh;overflow-y:auto">
+  <div class="modal modal-lg">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22" style="color:var(--turquesa)"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      <h3 style="margin:0;font-family:var(--serif);color:var(--titulo)">Termo de Tratamento de Dados — LGPD</h3>
+      <h3 style="margin:0;font-family:var(--serif);color:var(--azul-marinho)">Termo de Tratamento de Dados — LGPD</h3>
     </div>
-    <p style="font-size:12px;color:var(--texto-secundario);margin:0 0 16px">Lei nº 13.709/2018 — Lei Geral de Proteção de Dados Pessoais · Versão <span id="lgpdVersaoLabel">1.0</span></p>
+    <p style="font-size:12px;color:var(--texto-suave);margin:0 0 16px">Lei nº 13.709/2018 — Lei Geral de Proteção de Dados Pessoais · Versão <span id="lgpdVersaoLabel">1.0</span></p>
 
     <div style="font-size:13.5px;line-height:1.7;color:var(--texto)">
       <p>A Wonder Boat, na qualidade de operadora desta ferramenta de campo para registro técnico de intervenções em embarcações, presta os seguintes esclarecimentos quanto ao tratamento de dados pessoais conforme a Lei Geral de Proteção de Dados:</p>
@@ -2461,7 +2587,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   <div class="modal">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22" style="color:var(--turquesa)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <h3 style="margin:0;font-family:var(--serif);color:var(--titulo)" id="modalEstimativaTitulo">Pronto para gerar o PDF</h3>
+      <h3 style="margin:0;font-family:var(--serif);color:var(--azul-marinho)" id="modalEstimativaTitulo">Pronto para gerar o PDF</h3>
     </div>
     <p style="margin:14px 0 8px;font-size:14px" id="modalEstimativaTexto">—</p>
     <div id="modalEstimativaAlerta" style="display:none;margin-top:12px;padding:12px;background:rgba(201,162,39,0.1);border:1px solid var(--dourado);border-radius:8px;font-size:12.5px;line-height:1.55;color:var(--texto)"></div>
@@ -3946,7 +4072,7 @@ function abrirOS(id) {
   state.currentOSId = id;
   salvarEstado();
   renderTudo();
-  if (window.innerWidth < 960) document.getElementById('sidebar').classList.remove('show');
+  if (window.innerWidth < WB_MOBILE_BREAKPOINT) document.getElementById('sidebar').classList.remove('show');
 }
 
 function duplicarOS(id) {
@@ -4960,6 +5086,56 @@ async function gerarPDFBlob() {
     try { await document.fonts.ready; } catch (e) { /* timeout já tratado acima */ }
   }
 
+  // CORREÇÃO DE FOTOS ESTICADAS/OVALADAS NO PDF — html2canvas NÃO respeita
+  // object-fit:contain em <img> (limitação conhecida da lib): ela sempre
+  // desenha o bitmap esticado para preencher a caixa do elemento, ignorando
+  // a proporção original. No app (preview e impressão nativa do navegador)
+  // isso nunca aparece, pois object-fit é nativo do browser — só se
+  // manifesta no PDF exportado via html2canvas. Fotos com proporção
+  // parecida com a caixa saem ilesas; fotos quase quadradas ou verticais
+  // (ex.: uma antena redonda) saíam visivelmente ovaladas/esticadas.
+  // Correção: "assamos" o letterbox (contain) em pixels reais num canvas
+  // do TAMANHO EXATO da caixa já calculada pelo layout (getBoundingClientRect,
+  // com o clone já no DOM) e substituímos o src da <img> pelo resultado.
+  // Como a imagem final passa a ter a MESMA proporção da caixa, não resta
+  // nada para o html2canvas esticar — resultado idêntico ao preview em
+  // qualquer lib de captura.
+  async function renderizarContainEmPixels(img) {
+    const rect = img.getBoundingClientRect();
+    const boxW = Math.round(rect.width);
+    const boxH = Math.round(rect.height);
+    if (boxW <= 0 || boxH <= 0) return;
+    try {
+      if (!img.complete || img.naturalWidth === 0) {
+        await new Promise((res) => {
+          img.addEventListener('load', res, { once: true });
+          img.addEventListener('error', res, { once: true });
+        });
+      }
+      if (!img.naturalWidth || !img.naturalHeight) return; // sem dimensões, mantém como está
+      const canvas = document.createElement('canvas');
+      canvas.width = boxW;
+      canvas.height = boxH;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#F5F5F5'; // mesmo fundo do letterbox no CSS (.r-foto img)
+      ctx.fillRect(0, 0, boxW, boxH);
+      const rImg = img.naturalWidth / img.naturalHeight;
+      const rBox = boxW / boxH;
+      let dw, dh;
+      if (rImg > rBox) { dw = boxW; dh = boxW / rImg; } else { dh = boxH; dw = boxH * rImg; }
+      ctx.drawImage(img, (boxW - dw) / 2, (boxH - dh) / 2, dw, dh);
+      img.src = canvas.toDataURL('image/jpeg', 0.92);
+      img.style.width = boxW + 'px';
+      img.style.height = boxH + 'px';
+      img.style.maxHeight = boxH + 'px';
+    } catch (e) {
+      console.warn('[Wonder Boat] Falha ao pré-renderizar contain para PDF (foto mantida como estava):', e);
+    }
+  }
+  await Promise.all(
+    Array.from(clone.querySelectorAll('.r-foto img')).map(renderizarContainEmPixels)
+  );
+
   // Renderiza o clone com escala 2x para preservar nitidez. windowWidth=920
   // é o passo crucial — diz ao html2canvas que o iframe interno deve simular
   // viewport de 920px, e nele as media queries @media (max-width:768px) NÃO
@@ -5961,16 +6137,18 @@ function alternarTema() {
 
 /* ============================================================
    GERENCIAMENTO DA SIDEBAR — fechar / abrir / alternar
-   Adapta comportamento por viewport: em mobile (<960px) a sidebar
-   é fixa e usa a classe .show. Em desktop (>=960px), colapsa via
+   Adapta comportamento por viewport: em mobile (<880px) a sidebar
+   é fixa e usa a classe .show. Em desktop (>=880px), colapsa via
    classe .sidebar-colapsada no .app-shell, liberando espaço útil.
    Estado persiste em localStorage entre sessões.
+   Limiar sincronizado com o breakpoint @media (max-width: 880px) do CSS.
    ============================================================ */
 const SIDEBAR_STATE_KEY = 'wonderboat_sidebar_collapsed';
+const WB_MOBILE_BREAKPOINT = 880;
 
 function fecharSidebar() {
   const shell = document.querySelector('.app-shell');
-  if (window.innerWidth < 960) {
+  if (window.innerWidth < WB_MOBILE_BREAKPOINT) {
     document.getElementById('sidebar').classList.remove('show');
   } else {
     shell.classList.add('sidebar-colapsada');
@@ -5980,7 +6158,7 @@ function fecharSidebar() {
 
 function abrirSidebar() {
   const shell = document.querySelector('.app-shell');
-  if (window.innerWidth < 960) {
+  if (window.innerWidth < WB_MOBILE_BREAKPOINT) {
     document.getElementById('sidebar').classList.add('show');
   } else {
     shell.classList.remove('sidebar-colapsada');
@@ -5990,7 +6168,7 @@ function abrirSidebar() {
 
 function alternarSidebar() {
   const shell = document.querySelector('.app-shell');
-  if (window.innerWidth < 960) {
+  if (window.innerWidth < WB_MOBILE_BREAKPOINT) {
     const sb = document.getElementById('sidebar');
     if (sb.classList.contains('show')) fecharSidebar();
     else abrirSidebar();
@@ -6002,7 +6180,7 @@ function alternarSidebar() {
 
 function restaurarEstadoSidebar() {
   // Restaura apenas em desktop — em mobile a sidebar começa fechada por padrão
-  if (window.innerWidth < 960) return;
+  if (window.innerWidth < WB_MOBILE_BREAKPOINT) return;
   try {
     if (localStorage.getItem(SIDEBAR_STATE_KEY) === '1') {
       document.querySelector('.app-shell').classList.add('sidebar-colapsada');
@@ -6667,11 +6845,11 @@ function configurarAutoBackup() {
       </label>
 
       <div style="margin-top:12px;display:flex;gap:10px;align-items:center;font-size:13px">
-        <label for="autoBackupInterval" style="color:var(--texto-secundario)">Intervalo:</label>
+        <label for="autoBackupInterval" style="color:var(--texto-suave)">Intervalo:</label>
         <select id="autoBackupInterval" class="field-input" style="flex:1;padding:6px 10px;font-size:13px">${opcoesIntervalo}</select>
       </div>
 
-      <p style="margin:12px 0 0;font-size:11.5px;color:var(--texto-secundario);line-height:1.5">
+      <p style="margin:12px 0 0;font-size:11.5px;color:var(--texto-suave);line-height:1.5">
         Último backup: <strong>${ultimoBackupTexto}</strong>
       </p>
     </div>
@@ -6784,7 +6962,7 @@ function registrarServiceWorker() {
 /* ============================================================
    INICIALIZAÇÃO
    ============================================================ */
-const WB_BUILD_VERSION = 'v1.7.1 · 2026-05-03';
+const WB_BUILD_VERSION = 'v1.8.0 · 2026-07-23';
 
 function init() {
   console.log('[Wonder Boat] Build ' + WB_BUILD_VERSION + ' — init() iniciado');
