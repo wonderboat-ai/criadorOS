@@ -7,7 +7,7 @@
    a aplicação principal recebe notificação e pode oferecer recarregamento.
    ============================================================ */
 
-const CACHE_VERSION = 'wonderboat-v1.0.7';
+const CACHE_VERSION = 'wonderboat-v1.8.1';
 // Versão embutida no nome do cache: ao subir CACHE_VERSION, o filtro do
 // activate descarta automaticamente caches de versões anteriores.
 const CACHE_NAME = 'wonderboat-cache-' + CACHE_VERSION;
@@ -15,10 +15,10 @@ const CACHE_NAME = 'wonderboat-cache-' + CACHE_VERSION;
 // Recursos essenciais do app — pré-cacheados na instalação do SW.
 // Como o HTML é autocontido (libs e fontes inline em base64), apenas
 // o próprio index e as fontes Google externas precisam ser cacheados.
+// Nome lowercase obrigatório — GitHub Pages é case-sensitive.
 const RECURSOS_PRECACHE = [
   './',
   './index.html',
-  './Index.html',
   './manifest.json'
 ];
 

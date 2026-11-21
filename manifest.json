@@ -2,7 +2,7 @@
   "name": "Wonder Boat — Gerador de Relatórios Técnicos Navais",
   "short_name": "Wonder Boat",
   "description": "Aplicativo de campo para coleta e geração de relatórios técnicos auditáveis de intervenções em embarcações — padrão NMEA 0400, NMEA 2000, ABYC e CIRM.",
-  "start_url": "./Index.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
