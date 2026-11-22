@@ -2235,6 +2235,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         Importar JSON
       </button>
       <input type="file" id="importJsonInput" accept=".json" style="display:none" onchange="importarJSON(event)">
+      <button class="btn btn-ghost btn-sm" id="btnExportarTudo" onclick="exportarTudo()" title="Gera um arquivo de backup (.wbmig) com todas as OS e fotos deste app; sai em partes se for grande">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 0L8 7m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Exportar tudo (backup)
+      </button>
     </div>
 
     <div class="os-list" id="osList">
@@ -2258,7 +2262,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         Limpar Tudo
       </button>
     </div>
-    <div id="wbVersionLabel" style="font-size:10px;color:#8fa6bf;text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em">build v1.8.0 · 2026-07-23</div>
+    <div id="wbVersionLabel" style="font-size:10px;color:#8fa6bf;text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em">build v1.8.2 · 2026-11-22</div>
   </aside>
 
   <!-- ============================================================
@@ -4124,7 +4128,7 @@ function excluirOS(id) {
 function limparTudo() {
   confirmar(
     'Limpar todas as OS?',
-    'Esta ação remove permanentemente todos os relatórios deste navegador. Considere exportar JSON antes.',
+    'Esta ação remove permanentemente todos os relatórios e fotos deste navegador. Antes, use Exportar tudo (backup) e guarde o arquivo (só a equipe consegue restaurá-lo); para poder recuperar sozinho, exporte também o JSON de cada OS.',
     async () => {
       state = { currentOSId: null, os: {} };
       _fotosCache.clear();
@@ -4262,6 +4266,1058 @@ function importarJSON(ev) {
   };
   reader.readAsText(file);
   ev.target.value = '';
+}
+
+/* ============================================================
+   EXPORTAR TUDO — backup de todas as OS e fotos deste app
+   ------------------------------------------------------------
+   v1.8.2 · primeiro passo da migração para a nuvem.
+   SOMENTE LEITURA para os dados do usuário: não altera o state, as OS nem as
+   fotos. As únicas escritas são a chave ULTIMO_EXPORT_KEY (localStorage), com o
+   resumo do último backup, e, como em qualquer exportação do app, o salvamento
+   antecipado de uma edição que ainda estava pendente (flushSalvarEstado).
+   O banco de fotos é aberto pelo próprio app (abrirIDB): num aparelho que nunca guardou
+   foto isso cria o banco VAZIO, o mesmo que o app cria ao salvar a primeira foto.
+   O app AINDA NÃO ABRE este arquivo. Ele é uma cópia de segurança: a equipe
+   restaura a partir dele (ferramentas em "Claude outputs/ferramentas-wbmig") e o
+   importador do app novo vai lê-lo (plano de migração, seção 13).
+
+   Formato .wbmig v1 — NDJSON: uma linha JSON por registro, separadas só por
+   quebra de linha (LF). Quem ler o arquivo deve separar as linhas apenas por LF
+   (splitlines() do Python e funções parecidas quebrariam em outros caracteres).
+   Ordem: cab, (parte 1: todas as os, depois ls se houver), fotos, rod.
+     cab   { t, formato:'wbmig', versaoFormato:1, app, appVersao, criadoEm, origem,
+             pacoteId, parte, partes, hashAlg:'sha256'|null }
+     os    { t, id, demo?:true, doc }  doc = cópia fiel de state.os[id]
+     ls    { t, chave, motivo, valor }  só existe se as OS do texto salvo no localStorage
+           forem diferentes (em dados) das da memória; item aberto ou fechado na tela
+           não conta. valor é esse texto (um JSON {currentOSId, os:{id:doc}}). Pode
+           ter OS que a memória não tem e versões mais novas das que ela tem: quem
+           restaura une por id e, em conflito, vale o maior atualizadoEm (empate:
+           vale a linha os). Com ls presente, o arquivo leva TODA imagem do banco.
+     foto  { t, id, sha256, bytes, mime, sistema, criadoEm, orfa, embutidaNaOS?,
+             refs:[{osId,onde}], dataUrl }  uma por registro do banco de fotos que
+           tem imagem. Só fica de fora o registro cuja imagem é IDÊNTICA a uma cópia
+           embutida numa OS. orfa:true = nenhuma OS da memória aponta para ele (refs
+           vazio). embutidaNaOS:true = a OS traz outra imagem, embutida, para o
+           mesmo id: a embutida vale e esta linha é a versão que o banco guardava.
+     rod   { t, parte, partes, nFotosNestaParte, ultima, ... } a última traz o resumo:
+           nOS, fotosReferenciadas, fotosUnicas, fotosEmbutidasNaOS, fotosExportadas,
+           fotosOrfasExportadas, fotosBancoDifereDaOS, fotosBancoIgualAEmbutida,
+           fotosSemIdEmbutidas (foto sem id cuja imagem está dentro da OS), fotosAusentes[ids], ausentesDetalhe[{id,onde[]}], erros[{id,motivo,onde}],
+           fotosInvalidas[{id,onde,motivo}], estadoSalvoDivergente, estadoSalvo
+           {chave,sha,bytes}|null, estadoTopo (o state sem os: currentOSId etc.),
+           fotosNoIndexedDB, fotosSemOS, completo, hashAlg, pacoteSha,
+           docs[{id,sha}], fotos[{id,sha,bytes}].
+   Regra para quem restaurar: se o objeto da foto dentro da OS traz dataUrl como
+   texto com pelo menos 1 caractere, essa imagem vale para aquela referência;
+   dataUrl ausente ou vazio = sem imagem na OS, vale a linha foto de mesmo id. (Se a
+   embutida não abrir como imagem e a linha foto abrir, use a linha foto.) O base64 de
+   uma dataUrl pode vir com %XX: decodifique antes, como o navegador faz.
+   rod.completo NÃO inclui a conferência (feita depois de gravar o rodapé): ela só
+   aparece no nome do arquivo (completo, INCOMPLETO, REPROVADO ou sem-sha256).
+   O sha de uma OS é o SHA-256 da linha os inteira (sem a quebra de linha), em UTF-8.
+   pacoteSha = SHA-256 de JSON.stringify({docs:[{id,sha}], fotos:[{id,sha,bytes}]}),
+   com JSON compacto (sem espaços), as duas listas em ordem crescente de id por
+   unidades UTF-16 (o operador < do JavaScript; em Python: key=lambda x:
+   x['id'].encode('utf-16-be','surrogatepass')) e o texto em UTF-8.
+   Os caracteres U+0085, U+2028 e U+2029 saem escapados. Cada arquivo leva no
+   máximo ~120 MB (as OS entram na conta da parte 1); passando disso o backup sai
+   em várias partes (as OS na parte 1 e o rodapé completo na última). As partes
+   ficam em memória até a janela fechar.
+   Antes de liberar o download, o app RELÊ os arquivos gerados e recalcula as somas.
+   ============================================================ */
+const WBMIG_VERSAO_FORMATO = 1;
+let WBMIG_LIMITE_PARTE_BYTES = 120 * 1024 * 1024; // let: os testes automáticos reduzem o limite para forçar várias partes
+const ULTIMO_EXPORT_KEY = 'wonderboat_ultimo_export_v1';
+let _exportTudoEmAndamento = false;
+let _wbmigFotosEmAndamento = 0;   // fotos sendo adicionadas agora (adicionarFoto e adicionarFotoObservacao)
+(function () {
+  // Conta as adições de foto em andamento, com try/finally (uma exceção não deixa o contador preso). Preserva
+  // argumentos, this, retorno e erros das funções originais.
+  for (const nome of ['adicionarFoto', 'adicionarFotoObservacao']) {
+    const original = window[nome];
+    if (typeof original !== 'function' || original._wbmigEnvolvida) continue;
+    const envolvida = async function () {
+      _wbmigFotosEmAndamento++;
+      try { return await original.apply(this, arguments); } finally { _wbmigFotosEmAndamento--; }
+    };
+    envolvida._wbmigEnvolvida = true;
+    window[nome] = envolvida;
+  }
+})();
+
+// Os separadores de linha Unicode saem escapados. O fonte usa códigos numéricos para não conter
+// esses caracteres (nem barras invertidas) escritos por extenso.
+const _WBMIG_BARRA = String.fromCharCode(92);
+const _WBMIG_SEPARADORES = [0x85, 0x2028, 0x2029].map((c) => ({
+  ch: String.fromCharCode(c),
+  esc: _WBMIG_BARRA + 'u' + c.toString(16).padStart(4, '0')
+}));
+function _wbmigLinha(obj) {
+  let s = JSON.stringify(obj);
+  for (const sep of _WBMIG_SEPARADORES) s = s.split(sep.ch).join(sep.esc);
+  return s;
+}
+
+// Campos que existem só para a tela (item aberto ou fechado, medida da imagem) e não contam como diferença de dados.
+function _wbmigSemTela(k, v) { return (k === 'expandido' || k === '_aspect') ? undefined : v; }
+
+// SHA-256 em hexadecimal, ou null quando o navegador não oferece crypto.subtle
+// (acontece em páginas fora de https e de localhost, por exemplo http://192.168.0.10).
+async function _sha256Hex(dados) {
+  if (!(window.crypto && crypto.subtle && typeof crypto.subtle.digest === 'function')) return null;
+  const bytes = typeof dados === 'string' ? new TextEncoder().encode(dados) : dados;
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  let hex = '';
+  for (let i = 0; i < h.length; i++) hex += h[i].toString(16).padStart(2, '0');
+  return hex;
+}
+
+// Separa o mime e os bytes de uma dataUrl em base64. Devolve null se o formato
+// não for o esperado (o chamador conta isso como erro, nunca como sucesso).
+// Como o navegador faz com data: URLs, o texto em base64 pode vir com %XX; decodifica antes.
+function _decodificarDataUrl(dataUrl) {
+  const m = /^data:([^;,]*)((?:;[^;,]*)*),/.exec(dataUrl);
+  if (!m || !/;base64$/i.test(m[2])) return null;
+  let corpo = dataUrl.slice(m[0].length);
+  if (corpo.indexOf('%') !== -1) corpo = decodeURIComponent(corpo);
+  const bin = atob(corpo);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return { mime: m[1] || 'application/octet-stream', bytes };
+}
+
+// Reconhece o tipo real da imagem pelos primeiros bytes (a dataUrl pode declarar um
+// mime que não confere). Devolve null para vazio, lixo ou formato desconhecido.
+function _wbmigTipoImagem(b) {
+  if (!b || b.length < 4) return null;
+  if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'jpeg';
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return 'png';
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'gif';
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'webp';
+  return null;
+}
+
+// Espera no máximo "ms" por uma promessa; passado o tempo devolve o valor de reserva (a promessa original é
+// abandonada). Dá 250 ms extras depois do prazo: se a tela ficou travada, a resposta que já estava na fila ainda entra.
+function _wbmigComTempo(promessa, ms, reserva) {
+  return new Promise((resolve) => {
+    let t2 = null;
+    const t1 = setTimeout(() => { t2 = setTimeout(() => resolve(reserva), 250); }, ms);
+    const soltar = () => { clearTimeout(t1); if (t2) clearTimeout(t2); };
+    promessa.then((v) => { soltar(); resolve(v); }, () => { soltar(); resolve(reserva); });
+  });
+}
+let _WBMIG_TEMPO_BANCO_MS = 30000; // let: os testes automáticos reduzem o tempo para simular um banco que não responde
+
+// Cede a vez à tela SEM depender de setTimeout: com o app em segundo plano o navegador espaça os temporizadores
+// em ~1 s, e a conferência andaria uma foto por segundo. A mensagem de um canal não é espaçada assim.
+function _wbmigCeder() {
+  if (typeof MessageChannel !== 'function') return new Promise((r) => setTimeout(r, 0));
+  return new Promise((resolve) => {
+    const canal = new MessageChannel();
+    canal.port1.onmessage = () => { canal.port1.close(); resolve(); };
+    canal.port2.postMessage(0);
+  });
+}
+
+// Leitura de uma foto SEM passar pelo cache em memória (resolverDataUrl guardaria
+// todas as fotos na RAM) e distinguindo "não existe" de "falhou a leitura".
+// Se a conexão guardada pelo app foi fechada pelo sistema, reabre uma vez.
+async function _idbLerFotoParaExport(id) {
+  const tentar = () => _wbmigComTempo(_idbLerUmaVez(id), _WBMIG_TEMPO_BANCO_MS, { estado: 'erro', motivo: 'tempo esgotado' });
+  let r = await tentar();
+  if (r.estado === 'erro' && (r.motivo === 'InvalidStateError' || (r.motivo === 'IndexedDB indisponível' && 'indexedDB' in window))) {
+    _idbPromise = null;
+    r = await tentar();
+  }
+  return r;
+}
+
+async function _idbLerUmaVez(id) {
+  let db;
+  try { db = await abrirIDB(); } catch (e) { db = null; }
+  if (!db) return { estado: 'erro', motivo: 'IndexedDB indisponível' };
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE_FOTOS, 'readonly');
+      const req = tx.objectStore(STORE_FOTOS).get(id);
+      req.onsuccess = () => resolve(req.result ? { estado: 'ok', reg: req.result } : { estado: 'ausente' });
+      req.onerror = () => resolve({ estado: 'erro', motivo: (req.error && req.error.name) || 'falha de leitura' });
+      tx.onabort = () => resolve({ estado: 'erro', motivo: (tx.error && tx.error.name) || 'transação abortada' });
+    } catch (e) {
+      resolve({ estado: 'erro', motivo: (e && e.name) || 'exceção na leitura' });
+    }
+  });
+}
+
+// Todas as chaves do store de fotos. Devolve { total, chaves }, { indisponivel: true }
+// (o aparelho não tem IndexedDB) ou { erro } (falhou: o backup não pode se dizer completo).
+async function _idbChavesFotos() {
+  const tentar = () => _wbmigComTempo(_idbChavesUmaVez(), _WBMIG_TEMPO_BANCO_MS, { erro: 'tempo esgotado' });
+  let r = await tentar();
+  if (r.erro === 'InvalidStateError' || (r.erro === 'não foi possível abrir o banco de fotos' && 'indexedDB' in window)) {
+    _idbPromise = null;
+    r = await tentar();
+  }
+  return r;
+}
+
+async function _idbChavesUmaVez() {
+  let db;
+  try { db = await abrirIDB(); } catch (e) { return { erro: (e && e.name) || 'falha ao abrir o banco de fotos' }; }
+  if (!db) return ('indexedDB' in window) ? { erro: 'não foi possível abrir o banco de fotos' } : { indisponivel: true };
+  return new Promise((resolve) => {
+    try {
+      const st = db.transaction(STORE_FOTOS, 'readonly').objectStore(STORE_FOTOS);
+      if (typeof st.getAllKeys !== 'function') { resolve({ erro: 'este navegador não consegue listar as fotos guardadas' }); return; }
+      const r = st.getAllKeys();
+      r.onsuccess = () => resolve({ total: r.result.length, chaves: r.result });
+      r.onerror = () => resolve({ erro: (r.error && r.error.name) || 'falha ao listar as fotos guardadas' });
+    } catch (e) {
+      resolve({ erro: (e && e.name) || 'exceção ao listar as fotos guardadas' });
+    }
+  });
+}
+
+// Lista as fotos que uma OS referencia (itens e observações finais). Roda dentro do
+// instantâneo síncrono: não pode ter nenhum await.
+function _wbmigColetarFotos(osId, os, acc) {
+  const numero = os.meta && os.meta.numero != null ? String(os.meta.numero) : '';
+  const registrar = (f, onde, sistema) => {
+    if (!f || typeof f.id !== 'string' || !f.id) {
+      // Foto sem id: se a imagem está dentro da própria OS, nada se perde (só um aviso); senão é erro.
+      if (f && typeof f.dataUrl === 'string' && f.dataUrl.length > 0) acc.semIdEmbutidas++;
+      else acc.semId.push({ osId, onde });
+      return;
+    }
+    const embutida = typeof f.dataUrl === 'string' && f.dataUrl.length > 0;
+    let e = acc.mapa.get(f.id);
+    if (!e) { e = { refs: [], ctx: [], soEmbutida: true }; acc.mapa.set(f.id, e); }
+    e.refs.push({ osId, onde });
+    e.ctx.push({ osId, numero, onde, sistema });
+    if (!embutida) e.soEmbutida = false;
+    acc.total++;
+    if (embutida) { acc.embutidas++; acc.listaEmbutidas.push({ id: f.id, dataUrl: f.dataUrl, osId }); }
+  };
+  for (const it of (Array.isArray(os.itens) ? os.itens : [])) {
+    if (!it) continue;
+    for (const f of (Array.isArray(it.fotos) ? it.fotos : [])) registrar(f, 'item:' + it.id, it.sistema || '');
+  }
+  const obs = os.meta && Array.isArray(os.meta.observacoesFotos) ? os.meta.observacoesFotos : [];
+  for (const f of obs) registrar(f, 'obs', 'observações finais');
+}
+
+// Há foto sendo adicionada agora? (contador das duas funções do app que adicionam foto)
+function _wbmigFotoEmProcessamento() {
+  return _wbmigFotosEmAndamento > 0;
+}
+
+function _wbmigTamanho(bytes) {
+  const f = (n) => n.toFixed(1).replace('.', ',').replace(',0', '');
+  if (bytes >= 1073741824) return f(bytes / 1073741824) + ' GB';
+  if (bytes >= 1048576) return f(bytes / 1048576) + ' MB';
+  return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+}
+
+function _wbmigLerBuffer(blob) {
+  if (typeof blob.arrayBuffer === 'function') return blob.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = () => reject(fr.error);
+    fr.readAsArrayBuffer(blob);
+  });
+}
+
+// Percorre um Blob linha a linha (separador: LF), lendo pedaços de 4 MB. Cada linha sai como
+// Uint8Array e só vale até o próximo passo do laço. Sobra sem LF no fim vira { semFim: true }.
+async function* _wbmigLinhasDoBlob(blob) {
+  const TAM = 4 * 1024 * 1024;
+  let resto = null;
+  const junta = (a, b) => { const j = new Uint8Array(a.length + b.length); j.set(a, 0); j.set(b, a.length); return j; };
+  for (let ini = 0; ini < blob.size; ini += TAM) {
+    const pedaco = new Uint8Array(await _wbmigLerBuffer(blob.slice(ini, Math.min(ini + TAM, blob.size))));
+    let de = 0;
+    let lf;
+    while ((lf = pedaco.indexOf(10, de)) !== -1) {
+      const trecho = pedaco.subarray(de, lf);
+      yield resto ? junta(resto, trecho) : trecho;
+      resto = null;
+      de = lf + 1;
+    }
+    if (de < pedaco.length) resto = resto ? junta(resto, pedaco.subarray(de)) : pedaco.slice(de);
+  }
+  if (resto && resto.length) yield { semFim: true };
+}
+
+// Relê cada arquivo gerado, linha por linha, e recalcula tudo contra o que foi prometido no rodapé.
+// Devolve { ok, falhas } (ou null se o usuário cancelou).
+async function _wbmigConferir(arquivos, esperado, temHash, ui) {
+  const falhas = [];
+  const falha = (t) => { if (falhas.length < 20) falhas.push(t); };
+  const decodificador = new TextDecoder('utf-8', { fatal: true });
+  // Se um hash foi prometido, ele TEM que existir: crypto.subtle sumir no meio é falha, não "sem hash".
+  const hash = async (x) => {
+    if (!temHash) return null;
+    const h = await _sha256Hex(x);
+    if (h === null) throw new Error('SHA-256 indisponível durante a conferência');
+    return h;
+  };
+  const docsVistos = new Map();
+  const fotosVistas = new Map();
+  let lsVisto = null;
+  let rodFinal = null;
+  let pacoteIdVisto = null;
+  let lidas = 0;
+  for (let p = 0; p < arquivos.length; p++) {
+    const nomeParte = arquivos.length > 1 ? 'parte ' + (p + 1) : 'arquivo';
+    ui.progresso('Conferindo o arquivo gerado' + (arquivos.length > 1 ? ' (parte ' + (p + 1) + ' de ' + arquivos.length + ')' : '') + '…');
+    let n = 0;
+    let fotosDaParte = 0;
+    let ultimoTipo = null;
+    try {
+      for await (const bytesLinha of _wbmigLinhasDoBlob(arquivos[p].blob)) {
+        if (ui.cancelado) return null;
+        n++;
+        if (bytesLinha.semFim) { falha(nomeParte + ': o arquivo não termina com quebra de linha'); break; }
+        let texto, o;
+        try { texto = decodificador.decode(bytesLinha); } catch (e) { falha(nomeParte + ', linha ' + n + ': não é UTF-8 válido'); continue; }
+        try { o = JSON.parse(texto); } catch (e) { falha(nomeParte + ', linha ' + n + ': não é JSON válido'); continue; }
+        if (!o || typeof o !== 'object') { falha(nomeParte + ', linha ' + n + ': registro inesperado'); continue; }
+        ultimoTipo = o.t;
+        if (n === 1) {
+          if (o.t !== 'cab' || o.formato !== 'wbmig' || o.versaoFormato !== WBMIG_VERSAO_FORMATO) falha(nomeParte + ': cabeçalho inválido');
+          else if (o.parte !== p + 1 || o.partes !== arquivos.length) falha(nomeParte + ': numeração de partes inconsistente');
+          else if (o.hashAlg !== (temHash ? 'sha256' : null)) falha(nomeParte + ': algoritmo de hash do cabeçalho não confere');
+          if (pacoteIdVisto === null) pacoteIdVisto = o.pacoteId; else if (o.pacoteId !== pacoteIdVisto) falha(nomeParte + ': pertence a outro pacote');
+          continue;
+        }
+        if (o.t === 'os') {
+          if (typeof o.id !== 'string' || !o.doc || typeof o.doc !== 'object') { falha(nomeParte + ', linha ' + n + ': OS inválida'); continue; }
+          docsVistos.set(o.id, await hash(bytesLinha));
+        } else if (o.t === 'ls') {
+          lsVisto = { chave: o.chave, sha: await hash(bytesLinha), bytes: bytesLinha.length };
+        } else if (o.t === 'foto') {
+          fotosDaParte++;
+          let dec = null;
+          try { dec = typeof o.dataUrl === 'string' ? _decodificarDataUrl(o.dataUrl) : null; } catch (e) { dec = null; }
+          if (!dec) { falha(nomeParte + ', foto ' + o.id + ': imagem ilegível'); continue; }
+          const sha = await hash(dec.bytes);
+          if (dec.bytes.length !== o.bytes) falha(nomeParte + ', foto ' + o.id + ': tamanho não confere');
+          if (temHash && sha !== o.sha256) falha(nomeParte + ', foto ' + o.id + ': SHA-256 não confere');
+          fotosVistas.set(o.id, { sha, bytes: dec.bytes.length });
+        } else if (o.t === 'rod') {
+          if (o.parte !== p + 1) falha(nomeParte + ': rodapé de outra parte');
+          if (o.nFotosNestaParte !== fotosDaParte) falha(nomeParte + ': contagem de fotos da parte não confere');
+          if (o.ultima) rodFinal = o;
+        } else {
+          falha(nomeParte + ', linha ' + n + ': tipo de registro desconhecido');
+        }
+        // Deixa a tela respirar e o coletor de lixo trabalhar: a cada foto (cada linha de foto é grande) ou a cada 25 linhas curtas.
+        if (o.t === 'foto' || ++lidas % 25 === 0) await _wbmigCeder();
+      }
+    } catch (e) {
+      falha(nomeParte + ': não foi possível reler o arquivo (' + ((e && e.message) || (e && e.name) || 'erro') + ')');
+      continue;
+    }
+    if (ultimoTipo !== 'rod') falha(nomeParte + ': o arquivo não termina com o rodapé');
+  }
+
+  // Comparação final, entre o que foi relido e o que foi calculado na geração.
+  if (!rodFinal) {
+    falha('rodapé final não encontrado');
+  } else {
+    try {
+      const idsEsperadosDocs = esperado.docs.map((d) => d.id);
+      if (docsVistos.size !== idsEsperadosDocs.length) falha('nº de OS no arquivo (' + docsVistos.size + ') difere do esperado (' + idsEsperadosDocs.length + ')');
+      for (const d of esperado.docs) {
+        if (!docsVistos.has(d.id)) falha('OS ' + d.id + ' ausente do arquivo');
+        else if (temHash && docsVistos.get(d.id) !== d.sha) falha('OS ' + d.id + ': SHA-256 não confere');
+      }
+      if (fotosVistas.size !== esperado.fotos.length) falha('nº de fotos no arquivo (' + fotosVistas.size + ') difere do esperado (' + esperado.fotos.length + ')');
+      for (const f of esperado.fotos) {
+        const v = fotosVistas.get(f.id);
+        if (!v) falha('foto ' + f.id + ' ausente do arquivo');
+        else if (v.bytes !== f.bytes || (temHash && v.sha !== f.sha)) falha('foto ' + f.id + ': não confere com o esperado');
+      }
+      if (esperado.ls) {
+        if (!lsVisto) falha('cópia do estado salvo ausente do arquivo');
+        else if (temHash && lsVisto.sha !== esperado.ls.sha) falha('cópia do estado salvo: SHA-256 não confere');
+      } else if (lsVisto) {
+        falha('cópia do estado salvo inesperada no arquivo');
+      }
+      if (rodFinal.nOS !== idsEsperadosDocs.length || rodFinal.fotosExportadas !== esperado.fotos.length) falha('contagens do rodapé não conferem');
+      // Os índices do rodapé (o que um importador vai usar) também precisam ser os mesmos que a geração calculou.
+      if (JSON.stringify(rodFinal.docs) !== JSON.stringify(esperado.docs) || JSON.stringify(rodFinal.fotos) !== JSON.stringify(esperado.fotos)) {
+        falha('os índices do rodapé não conferem com o que foi gerado');
+      }
+      if (temHash) {
+        const porId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+        const docsLidos = [...docsVistos].map(([id, sha]) => ({ id, sha })).sort(porId);
+        const fotosLidas = [...fotosVistas].map(([id, v]) => ({ id, sha: v.sha, bytes: v.bytes })).sort(porId);
+        const pacoteRecalculado = await hash(JSON.stringify({ docs: docsLidos, fotos: fotosLidas }));
+        if (pacoteRecalculado !== rodFinal.pacoteSha || pacoteRecalculado !== esperado.pacoteSha) falha('o SHA-256 do pacote recalculado não confere com o do rodapé');
+      }
+    } catch (e) {
+      falha('não foi possível concluir a conferência (' + ((e && e.message) || 'erro') + ')');
+    }
+  }
+  return { ok: falhas.length === 0, falhas };
+}
+
+// Monta o(s) arquivo(s) do backup. Lê as fotos uma a uma; nada é guardado em memória
+// além de uma foto por vez (cada linha vira um Blob na hora).
+async function _exportTudoGerar(ui) {
+  const agora = new Date();
+  const temHash = !!(window.crypto && crypto.subtle && typeof crypto.subtle.digest === 'function');
+  const porId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const erros = [];
+  const invalidas = [];
+
+  // 1) Instantâneo SÍNCRONO (nenhum await neste trecho): o documento de cada OS, a lista das fotos
+  //    que ela referencia e o texto salvo no localStorage saem do mesmo instante, mesmo que algo
+  //    (ditado por voz, outra aba) mexa nos dados logo depois.
+  ui.progresso('Lendo as ordens de serviço…');
+  const fotos = { mapa: new Map(), semId: [], semIdEmbutidas: 0, total: 0, embutidas: 0, listaEmbutidas: [] };
+  const brutos = [];
+  for (const id of Object.keys(state.os)) {
+    const os = state.os[id];
+    if (!os || typeof os !== 'object') { erros.push({ id: 'os:' + id, motivo: 'OS inválida no armazenamento', onde: null }); continue; }
+    const reg = { t: 'os', id };
+    if (/^os_demo_/.test(id)) reg.demo = true;
+    reg.doc = os;
+    brutos.push({ id, linha: _wbmigLinha(reg) });
+    _wbmigColetarFotos(id, os, fotos);
+  }
+  let estadoAtual = null;
+  let osAntes = null;
+  let estadoSalvo = null;
+  let salvoIlegivel = false;
+  try { estadoAtual = JSON.stringify(state); osAntes = JSON.stringify(state.os); } catch (e) { /* segue com o que der */ }
+  try { estadoSalvo = localStorage.getItem(STORAGE_KEY); } catch (e) { salvoIlegivel = true; }
+  // Só conta como divergência se as OS forem diferentes EM DADOS: abrir ou fechar um item na tela muda "expandido"
+  // sem salvar, e isso não é motivo de alarme.
+  let salvoObj = null;
+  let estadoDivergente = false;
+  if (typeof estadoSalvo === 'string') {
+    try { salvoObj = JSON.parse(estadoSalvo); } catch (e) { salvoObj = null; }
+    if (salvoObj && typeof salvoObj === 'object') {
+      try { estadoDivergente = JSON.stringify(salvoObj.os || {}, _wbmigSemTela) !== JSON.stringify(state.os, _wbmigSemTela); } catch (e) { estadoDivergente = true; }
+    } else {
+      estadoDivergente = true; // o texto salvo nem é um JSON de estado: guarda como está
+    }
+  }
+  const linhaSalva = estadoDivergente
+    ? _wbmigLinha({ t: 'ls', chave: STORAGE_KEY, motivo: 'o texto salvo no aparelho difere do estado aberto na tela', valor: estadoSalvo })
+    : null;
+  const estadoTopo = {};
+  for (const k of Object.keys(state)) if (k !== 'os') estadoTopo[k] = state[k];
+  // Se o salvamento antecipado (flush) falhou, o texto salvo ficou para trás: quase sempre é armazenamento cheio.
+  // (Uma edição que chegou depois do flush deixa um novo salvamento pendente: aí não afirmamos nada.)
+  const espacoCheio = !!(ui.haviaPendente && estadoDivergente && !_saveDebounceTimer);
+  const salvoSoOS = [];
+  const salvoDifere = [];
+  if (estadoDivergente && salvoObj && salvoObj.os && typeof salvoObj.os === 'object') {
+    try {
+      const rotulo = (id, os) => (os && os.meta && os.meta.numero != null && String(os.meta.numero) !== '' ? String(os.meta.numero) : id);
+      for (const id of Object.keys(salvoObj.os)) {
+        if (!state.os[id]) salvoSoOS.push({ id, numero: rotulo(id, salvoObj.os[id]) });
+        else if (JSON.stringify(salvoObj.os[id], _wbmigSemTela) !== JSON.stringify(state.os[id], _wbmigSemTela)) salvoDifere.push({ id, numero: rotulo(id, salvoObj.os[id]) });
+      }
+    } catch (e) { /* segue: só a cópia crua vai no arquivo */ }
+  }
+  // De quem é cada foto, para os avisos mostrarem "OS 4660 (Motor)" em vez de um id interno.
+  const quem = (id) => {
+    const e = fotos.mapa.get(id);
+    const c = e && e.ctx[0];
+    return c ? 'OS ' + (c.numero || c.osId) + (c.sistema ? ' (' + c.sistema + ')' : '') : null;
+  };
+  const addErro = (id, motivo) => erros.push({ id, motivo, onde: quem(id) });
+  for (const r of fotos.semId) erros.push({ id: null, motivo: 'foto sem identificador (' + r.osId + ', ' + r.onde + ')', onde: null });
+
+  // 2) Somas das OS e conferência das imagens embutidas nelas.
+  const docs = [];
+  for (const b of brutos) docs.push({ id: b.id, linha: b.linha, sha: await _sha256Hex(b.linha) });
+  const lsInfo = linhaSalva ? { chave: STORAGE_KEY, sha: await _sha256Hex(linhaSalva), bytes: new Blob([linhaSalva]).size } : null;
+  const embutidasPorId = new Map();
+  for (let i = 0; i < fotos.listaEmbutidas.length; i++) {
+    const e = fotos.listaEmbutidas[i];
+    let s = embutidasPorId.get(e.id);
+    if (!s) { s = new Set(); embutidasPorId.set(e.id, s); }
+    s.add(e.dataUrl);
+    let dec = null;
+    try { dec = _decodificarDataUrl(e.dataUrl); } catch (err) { dec = null; }
+    if (!dec) invalidas.push({ id: e.id, onde: 'embutida na OS ' + e.osId, motivo: 'imagem ilegível ou em formato inesperado' });
+    else if (!_wbmigTipoImagem(dec.bytes)) invalidas.push({ id: e.id, onde: 'embutida na OS ' + e.osId, motivo: dec.bytes.length === 0 ? 'imagem vazia' : 'não parece uma imagem' });
+    if (i % 10 === 9) await _wbmigCeder();
+  }
+
+  // 3) Lê as fotos do IndexedDB, uma de cada vez: as que alguma OS referencia, as que a OS também traz embutidas
+  //    (para ver se o banco guarda outra imagem) e as que ficaram sem OS, para o arquivo ter TUDO que o app guarda.
+  //    A parte 1 também leva as linhas das OS (e a cópia do texto salvo): elas entram na conta do limite da parte.
+  const bytesDocs = docs.reduce((n, d) => n + d.linha.length, 0) + (linhaSalva ? linhaSalva.length : 0);
+  const partes = [{ blobs: [], bytesFotos: bytesDocs, nFotos: 0 }];
+  const indiceFotos = [];
+  const ausentes = [];
+  const exportadasIds = new Set();
+  let exportadas = 0;
+  let temposEsgotados = 0;
+  const NL = String.fromCharCode(10);
+  const registrarFoto = async (id, reg, refs, extra) => {
+    const dataUrl = reg.dataUrl;
+    let dec;
+    try { dec = _decodificarDataUrl(dataUrl); } catch (e) { dec = null; }
+    if (!dec) { addErro(id, 'imagem ilegível ou em formato inesperado'); return 'erro'; }
+    if (!_wbmigTipoImagem(dec.bytes)) {
+      invalidas.push({ id, onde: refs.length ? 'IndexedDB' : 'IndexedDB (sem OS)', motivo: dec.bytes.length === 0 ? 'imagem vazia' : 'não parece uma imagem (formato desconhecido)' });
+    }
+    const sha = await _sha256Hex(dec.bytes);
+    const linha = _wbmigLinha(Object.assign({
+      t: 'foto', id, sha256: sha, bytes: dec.bytes.length, mime: dec.mime,
+      sistema: reg.sistema == null ? null : reg.sistema,
+      criadoEm: reg.criadoEm == null ? null : reg.criadoEm,
+      orfa: refs.length === 0
+    }, extra || {}, { refs, dataUrl }));
+    let parte = partes[partes.length - 1];
+    if (parte.nFotos > 0 && parte.bytesFotos + dataUrl.length > WBMIG_LIMITE_PARTE_BYTES) {
+      parte = { blobs: [], bytesFotos: 0, nFotos: 0 };
+      partes.push(parte);
+    }
+    parte.blobs.push(new Blob([linha, NL]));
+    parte.bytesFotos += dataUrl.length;
+    parte.nFotos++;
+    exportadas++;
+    exportadasIds.add(id);
+    indiceFotos.push({ id, sha, bytes: dec.bytes.length });
+    return 'ok';
+  };
+  // Resultado da leitura: 'ok' (registro com imagem em .reg), 'ausente' (sem registro ou sem imagem) ou 'erro'.
+  const lerFoto = async (id) => {
+    const lido = await _idbLerFotoParaExport(id);
+    if (lido.estado === 'ausente') return { r: 'ausente' };
+    if (lido.estado === 'erro') {
+      // Banco que não responde: não adianta esperar foto por foto (cada uma levaria 30 s).
+      if (lido.motivo === 'tempo esgotado' && ++temposEsgotados >= 2) throw new Error('O banco de fotos do aparelho não respondeu. Feche o app, abra de novo e tente outra vez.');
+      addErro(id, lido.motivo);
+      return { r: 'erro' };
+    }
+    const dataUrl = lido.reg && lido.reg.dataUrl;
+    if (typeof dataUrl !== 'string' || !dataUrl) return { r: 'ausente' };
+    return { r: 'ok', reg: lido.reg };
+  };
+
+  const idsParaLer = [];
+  const idsSoEmbutidas = [];
+  for (const [id, e] of fotos.mapa) (e.soEmbutida ? idsSoEmbutidas : idsParaLer).push(id);
+  for (let i = 0; i < idsParaLer.length; i++) {
+    if (ui.cancelado) return null;
+    ui.progresso('Lendo fotos: ' + (i + 1) + ' de ' + idsParaLer.length + '…');
+    const id = idsParaLer[i];
+    const l = await lerFoto(id);
+    if (l.r === 'ausente') ausentes.push(id);
+    else if (l.r === 'ok') await registrarFoto(id, l.reg, fotos.mapa.get(id).refs);
+  }
+
+  // Fotos que a OS já traz embutidas: se o banco guarda a MESMA imagem, nada a fazer; se guarda outra
+  // (por exemplo, a foto foi girada depois de gerar o relatório), a versão do banco entra no arquivo também.
+  let bancoIgualAEmbutida = 0;
+  const bancoDifere = [];
+  for (let i = 0; i < idsSoEmbutidas.length; i++) {
+    if (ui.cancelado) return null;
+    ui.progresso('Conferindo fotos que também estão dentro das OS: ' + (i + 1) + ' de ' + idsSoEmbutidas.length + '…');
+    const id = idsSoEmbutidas[i];
+    const l = await lerFoto(id);
+    if (l.r !== 'ok') continue; // sem registro no banco ou sem imagem: vale a cópia embutida (erro de leitura já foi anotado)
+    // Imagem do banco idêntica à embutida: nada a guardar. Com texto salvo divergente (ls) guarda tudo, porque a versão
+    // mais nova de uma OS pode ter só o id da foto, sem a cópia embutida.
+    if (!estadoDivergente && embutidasPorId.get(id) && embutidasPorId.get(id).has(l.reg.dataUrl)) { bancoIgualAEmbutida++; continue; }
+    let decBanco = null;
+    try { decBanco = _decodificarDataUrl(l.reg.dataUrl); } catch (e) { decBanco = null; }
+    if (!decBanco) {
+      // A imagem boa está dentro da OS; a cópia do banco é que não abre. Não é erro do backup: só um aviso.
+      invalidas.push({ id, onde: 'IndexedDB (a OS tem a imagem)', motivo: 'cópia do banco ilegível', guardada: false });
+      continue;
+    }
+    const feito = await registrarFoto(id, l.reg, fotos.mapa.get(id).refs, { embutidaNaOS: true });
+    if (feito === 'ok') bancoDifere.push(id);
+  }
+
+  ui.progresso('Conferindo o que está guardado no aparelho…');
+  const idb = await _idbChavesFotos();
+  let chavesIDB = null;
+  if (idb.erro) erros.push({ id: null, motivo: 'não foi possível listar as fotos guardadas (' + idb.erro + ')', onde: null });
+  else if (idb.chaves) chavesIDB = idb.chaves;
+  const orfas = chavesIDB ? chavesIDB.filter((k) => !fotos.mapa.has(k)) : [];
+  let orfasExportadas = 0;
+  for (let i = 0; i < orfas.length; i++) {
+    if (ui.cancelado) return null;
+    ui.progresso('Lendo fotos sem OS: ' + (i + 1) + ' de ' + orfas.length + '…');
+    const l = await lerFoto(orfas[i]);
+    if (l.r === 'ok') { if ((await registrarFoto(orfas[i], l.reg, [])) === 'ok') orfasExportadas++; }
+    else if (l.r === 'ausente') invalidas.push({ id: orfas[i], onde: 'IndexedDB (sem OS)', motivo: 'registro sem imagem', guardada: false });
+  }
+
+  // Toda chave do IndexedDB precisa ter destino: no arquivo, embutida numa OS (igual ou sem cópia no banco),
+  // ou apontada como ausente, erro ou inválida.
+  if (chavesIDB) {
+    const contabilizadas = new Set(exportadasIds);
+    for (const id of idsSoEmbutidas) contabilizadas.add(id);
+    for (const id of ausentes) contabilizadas.add(id);
+    for (const e of erros) if (e.id) contabilizadas.add(e.id);
+    for (const v of invalidas) contabilizadas.add(v.id);
+    for (const k of chavesIDB) {
+      if (!contabilizadas.has(k)) addErro(k, 'foto guardada no aparelho que ficou fora da conta do backup');
+    }
+  }
+
+  // Nada para guardar: nenhuma OS, nenhuma foto no banco, nenhum texto salvo.
+  if (docs.length === 0 && !linhaSalva && erros.length === 0 && (!chavesIDB || chavesIDB.length === 0)) return { vazio: true };
+
+  const indiceDocs = docs.map((d) => ({ id: d.id, sha: d.sha })).sort(porId);
+  indiceFotos.sort(porId);
+  const pacoteSha = temHash ? await _sha256Hex(JSON.stringify({ docs: indiceDocs, fotos: indiceFotos })) : null;
+  const completo = ausentes.length === 0 && erros.length === 0;
+  if (ui.cancelado) return null;
+
+  // 4) Monta os arquivos.
+  const nPartes = partes.length;
+  const pacoteId = (window.crypto && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : gerarId('pk', 8);
+  const carimbo = agora.getFullYear() + '-' + String(agora.getMonth() + 1).padStart(2, '0') + '-' + String(agora.getDate()).padStart(2, '0') +
+    '_' + String(agora.getHours()).padStart(2, '0') + '-' + String(agora.getMinutes()).padStart(2, '0');
+  const ausentesDetalhe = ausentes.map((id) => ({ id, onde: fotos.mapa.get(id) ? fotos.mapa.get(id).ctx : [] }));
+  const arquivos = partes.map((parte, i) => {
+    const cab = {
+      t: 'cab', formato: 'wbmig', versaoFormato: WBMIG_VERSAO_FORMATO, app: 'criadorOS', appVersao: WB_BUILD_VERSION,
+      criadoEm: agora.toISOString(), origem: location.origin, pacoteId, parte: i + 1, partes: nPartes,
+      hashAlg: temHash ? 'sha256' : null
+    };
+    const blobs = [new Blob([_wbmigLinha(cab), NL])];
+    if (i === 0) {
+      for (const d of docs) blobs.push(new Blob([d.linha, NL]));
+      if (linhaSalva) blobs.push(new Blob([linhaSalva, NL]));
+    }
+    for (const b of parte.blobs) blobs.push(b);
+    const rod = { t: 'rod', parte: i + 1, partes: nPartes, nFotosNestaParte: parte.nFotos, ultima: i === nPartes - 1 };
+    if (i === nPartes - 1) {
+      Object.assign(rod, {
+        nOS: docs.length, fotosReferenciadas: fotos.total, fotosUnicas: fotos.mapa.size, fotosEmbutidasNaOS: fotos.embutidas,
+        fotosExportadas: exportadas, fotosOrfasExportadas: orfasExportadas, fotosBancoDifereDaOS: bancoDifere.length,
+        fotosBancoIgualAEmbutida: bancoIgualAEmbutida, fotosSemIdEmbutidas: fotos.semIdEmbutidas,
+        fotosAusentes: ausentes, ausentesDetalhe, erros, fotosInvalidas: invalidas,
+        estadoSalvoDivergente: estadoDivergente, estadoSalvo: lsInfo, estadoTopo,
+        fotosNoIndexedDB: chavesIDB ? chavesIDB.length : null, fotosSemOS: chavesIDB ? orfas.length : null,
+        completo, hashAlg: temHash ? 'sha256' : null, pacoteSha, docs: indiceDocs, fotos: indiceFotos
+      });
+    }
+    blobs.push(new Blob([_wbmigLinha(rod), NL]));
+    const blob = new Blob(blobs, { type: 'application/x-ndjson' });
+    return { nome: '', blob, bytes: blob.size, sufixo: nPartes > 1 ? '_parte-' + (i + 1) + '-de-' + nPartes : '' };
+  });
+
+  // 5) Relê os arquivos que acabaram de ser montados e confere tudo, antes de oferecer o download.
+  const conferencia = await _wbmigConferir(arquivos, { docs: indiceDocs, fotos: indiceFotos, ls: lsInfo, pacoteSha }, temHash, ui);
+  if (conferencia === null || ui.cancelado) return null;
+
+  // O nome do arquivo diz o veredito: "completo" só quando o backup está completo E conferido.
+  const veredito = !conferencia.ok ? 'REPROVADO' : (!completo ? 'INCOMPLETO' : (!temHash ? 'sem-sha256' : 'completo'));
+  for (const a of arquivos) a.nome = 'wonderboat_backup_' + veredito + '_' + carimbo + a.sufixo + '.wbmig';
+
+  // O arquivo é o retrato do começo da exportação. Se as OS mudaram enquanto ele era gerado (uma foto que
+  // terminou de ser adicionada, um ditado por voz), a tela avisa para gerar de novo. Trocar de OS não conta.
+  let alteradoDuranteBackup = false;
+  try { alteradoDuranteBackup = (osAntes !== null && JSON.stringify(state.os) !== osAntes) || _wbmigFotoEmProcessamento(); } catch (e) { alteradoDuranteBackup = false; }
+
+  return {
+    arquivos,
+    resumo: {
+      geradoEm: agora.toISOString(), nOS: docs.length, fotosReferenciadas: fotos.total, fotosUnicas: fotos.mapa.size,
+      fotosEmbutidasNaOS: fotos.embutidas, fotosSoNaOS: idsSoEmbutidas.length, fotosExportadas: exportadas,
+      fotosNoArquivoDeOS: exportadas - orfasExportadas - bancoDifere.length,
+      fotosOrfasExportadas: orfasExportadas, fotosBancoDifereDaOS: bancoDifere.length, fotosSemIdEmbutidas: fotos.semIdEmbutidas,
+      ausentes, ausentesDetalhe, erros, fotosInvalidas: invalidas,
+      estadoSalvoDivergente: estadoDivergente, salvoSoOS, salvoDifere, espacoCheio, salvoIlegivel, alteradoDuranteBackup,
+      fotosNoIndexedDB: chavesIDB ? chavesIDB.length : null, fotosSemOS: chavesIDB ? orfas.length : null,
+      completo, conferencia, verificado: temHash && conferencia.ok, veredito, pacoteSha, partes: nPartes
+    }
+  };
+}
+
+/* ---------- janela de progresso e resultado (DOM, sem innerHTML) ---------- */
+function _wbmigEl(tag, texto, estilo, classe) {
+  const el = document.createElement(tag);
+  if (texto != null) el.textContent = texto;
+  if (estilo) el.style.cssText = estilo;
+  if (classe) el.className = classe;
+  return el;
+}
+
+function _exportTudoJanela() {
+  const focoAnterior = document.activeElement; // para devolver o foco ao botão da barra lateral quando a janela fechar
+  const fundo = _wbmigEl('div', null, 'z-index:250', 'modal-backdrop show');
+  fundo.setAttribute('role', 'dialog');
+  fundo.setAttribute('aria-modal', 'true');
+  fundo.setAttribute('aria-label', 'Exportar tudo');
+  fundo.tabIndex = -1;
+  // overflow-wrap: um número de OS ou sistema comprido, sem espaço, não pode estourar a largura da janela.
+  const caixa = _wbmigEl('div', null, 'overscroll-behavior:contain;overflow-wrap:anywhere', 'modal');
+  const titulo = _wbmigEl('h3', 'Exportar tudo — backup', 'margin:0 0 6px;font-family:var(--serif);color:var(--azul-marinho)');
+  const corpo = _wbmigEl('div', null, 'font-size:14px;line-height:1.55;margin:12px 0');
+  // Em tela estreita (celular) os botões empilham; no desktop podem quebrar linha. Sem isso os botões ficam numa
+  // linha só (.modal-actions não quebra) e os primeiros saem da tela, sem como alcançá-los.
+  const estreita = window.innerWidth < 600;
+  const acoes = _wbmigEl('div', null, 'margin-top:12px;' + (estreita ? 'flex-direction:column;align-items:stretch' : 'flex-wrap:wrap'), 'modal-actions');
+  // O toast do app (z-index 100) fica atrás desta janela (250): os avisos de download vão aqui dentro.
+  const linhaEstado = _wbmigEl('p', '', 'margin:8px 0 0;font-size:13px;font-weight:600;color:var(--status-ok)');
+  linhaEstado.setAttribute('role', 'status');
+  caixa.append(titulo, corpo, linhaEstado, acoes);
+  fundo.appendChild(caixa);
+  document.body.appendChild(fundo);
+
+  // Em celular a página do app pode ser mais larga que a tela; um fundo fixo seguiria a largura da página e a
+  // janela sairia da tela pela direita. Enquanto a janela estiver aberta ela acompanha a área realmente visível.
+  const vv = window.visualViewport;
+  const ajustarAoVisor = () => {
+    if (!vv) return;
+    const larguraPagina = window.innerWidth; // largura em que os elementos fixos são montados (a da página, que pode passar da tela)
+    // Com zoom de pinça (escala diferente de 1) volta ao posicionamento normal: a janela não deve ficar presa ao visor.
+    if (vv.width < larguraPagina - 1 && Math.abs((vv.scale || 1) - 1) < 0.05) {
+      fundo.style.right = 'auto'; fundo.style.bottom = 'auto';
+      fundo.style.left = vv.offsetLeft + 'px'; fundo.style.top = vv.offsetTop + 'px';
+      fundo.style.width = vv.width + 'px'; fundo.style.height = vv.height + 'px';
+    } else {
+      fundo.style.right = ''; fundo.style.bottom = ''; fundo.style.left = ''; fundo.style.top = ''; fundo.style.width = ''; fundo.style.height = '';
+    }
+  };
+  if (vv) { vv.addEventListener('resize', ajustarAoVisor); vv.addEventListener('scroll', ajustarAoVisor); }
+  window.addEventListener('resize', ajustarAoVisor);
+  ajustarAoVisor();
+
+  let linhaProgresso = null;
+  const esvaziar = (el) => { while (el.firstChild) el.removeChild(el.firstChild); };
+  const ui = {
+    cancelado: false,
+    emGeracao: true,
+    haviaPendente: false,
+    pendencias: null,   // função: quantas partes ainda não tiveram o download pedido (só na tela de resultado)
+    totalPartes: 0,
+    confirmouSair: false,
+    avisouEm: 0,
+    botaoFechar: null,
+    corpo,
+    acoes,
+    texto(t, estilo) { const p = _wbmigEl('p', t, estilo || 'margin:6px 0'); corpo.appendChild(p); return p; },
+    estado(t, cor) { linhaEstado.textContent = t; linhaEstado.style.color = cor || 'var(--status-ok)'; },
+    limpar() {
+      esvaziar(corpo); esvaziar(acoes); linhaEstado.textContent = ''; linhaProgresso = null;
+      // O botão que tinha o foco acabou de sair: leva o foco para a janela, para o Escape continuar funcionando.
+      try { if (!caixa.contains(document.activeElement)) fundo.focus(); } catch (e) { /* segue */ }
+    },
+    botao(rotulo, onclick, primario) {
+      const b = _wbmigEl('button', rotulo, null, 'btn ' + (primario ? 'btn-primary' : 'btn-ghost'));
+      b.type = 'button';
+      b.style.whiteSpace = 'normal'; // .btn usa nowrap; rótulos longos precisam quebrar linha em tela estreita
+      b.style.maxWidth = '100%';
+      b.addEventListener('click', onclick);
+      acoes.appendChild(b);
+      return b;
+    },
+    progresso(t) {
+      if (!linhaProgresso) linhaProgresso = ui.texto(t);
+      else linhaProgresso.textContent = t;
+    },
+    // Fechar a janela é o que libera a trava de "backup em andamento": enquanto ela estiver aberta ninguém abre outra.
+    fechar() {
+      if (vv) { vv.removeEventListener('resize', ajustarAoVisor); vv.removeEventListener('scroll', ajustarAoVisor); }
+      window.removeEventListener('resize', ajustarAoVisor);
+      fundo.remove();
+      _exportTudoEmAndamento = false;
+      try { if (focoAnterior && focoAnterior.isConnected && typeof focoAnterior.focus === 'function') focoAnterior.focus(); } catch (e) { /* sem foco: segue */ }
+    },
+    // Botão Fechar e Escape: pedem confirmação se ainda há parte do backup sem download; durante a geração, cancelam.
+    tentarFechar() {
+      const faltam = ui.pendencias ? ui.pendencias() : 0;
+      if (faltam > 0) {
+        if (!ui.confirmouSair) {
+          // 1º pedido: avisa e muda o botão para "Fechar mesmo assim"; pedir o download de outra parte volta a armar o aviso.
+          ui.confirmouSair = true;
+          ui.avisouEm = Date.now();
+          ui.estado((ui.totalPartes === 1 ? 'Você ainda não baixou o arquivo.' : (faltam === 1 ? 'Ainda falta baixar 1 parte.' : 'Ainda faltam ' + faltam + ' partes para baixar.')) +
+            ' Toque em "Fechar mesmo assim" para sair sem baixar.', 'var(--status-pendente)');
+          if (ui.botaoFechar) {
+            ui.botaoFechar.textContent = 'Fechar mesmo assim';
+            try { ui.botaoFechar.scrollIntoView({ block: 'nearest' }); } catch (e) { /* segue */ }
+          }
+          return;
+        }
+        // 2º pedido: só vale se foi deliberado (um duplo toque sem querer logo depois do aviso é ignorado).
+        if (Date.now() - ui.avisouEm < 700) return;
+      }
+      const cancelou = ui.emGeracao;
+      ui.cancelado = true;
+      ui.fechar();
+      if (cancelou) toast('Backup cancelado. Nada foi baixado.');
+    }
+  };
+  // Teclado: Escape fecha (e, durante a geração, cancela); Tab e Shift+Tab ficam dentro da janela.
+  fundo.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') { ev.stopPropagation(); ui.tentarFechar(); return; }
+    if (ev.key !== 'Tab') return;
+    const focaveis = Array.from(caixa.querySelectorAll('button'));
+    if (!focaveis.length) { ev.preventDefault(); return; }
+    const primeiro = focaveis[0];
+    const ultimo = focaveis[focaveis.length - 1];
+    if (ev.shiftKey && (document.activeElement === primeiro || document.activeElement === fundo)) { ev.preventDefault(); ultimo.focus(); }
+    else if (!ev.shiftKey && document.activeElement === ultimo) { ev.preventDefault(); primeiro.focus(); }
+  });
+  try { fundo.focus(); } catch (e) { /* sem foco programático: segue sem */ }
+  return ui;
+}
+
+function _exportTudoBaixar(arquivo, resumo) {
+  const url = URL.createObjectURL(arquivo.blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = arquivo.nome;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoga só depois de um tempo: em alguns navegadores móveis o download começa depois do clique.
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
+  _exportTudoGravarResumo(resumo, arquivo.nome);
+}
+
+function _exportTudoGravarResumo(resumo, nomeArquivo) {
+  try {
+    const anterior = JSON.parse(localStorage.getItem(ULTIMO_EXPORT_KEY) || 'null');
+    const mesmo = anterior && anterior.pacoteSha === resumo.pacoteSha && anterior.geradoEm === resumo.geradoEm;
+    const arquivos = mesmo && Array.isArray(anterior.downloadsPedidos) ? anterior.downloadsPedidos.slice() : [];
+    if (arquivos.indexOf(nomeArquivo) === -1) arquivos.push(nomeArquivo);
+    // "downloadsPedidos": o app só sabe que o toque no botão de download foi feito, não que o navegador terminou de salvar.
+    localStorage.setItem(ULTIMO_EXPORT_KEY, JSON.stringify({
+      geradoEm: resumo.geradoEm, nOS: resumo.nOS, fotosExportadas: resumo.fotosExportadas, completo: resumo.completo,
+      verificado: resumo.verificado, veredito: resumo.veredito, pacoteSha: resumo.pacoteSha, partes: resumo.partes, downloadsPedidos: arquivos
+    }));
+  } catch (e) {
+    console.warn('Não foi possível gravar o resumo do último backup:', e);
+  }
+}
+
+// Traduz o nome técnico de um erro do navegador para uma frase que o técnico entenda.
+function _wbmigMotivo(m) {
+  const mapa = {
+    'tempo esgotado': 'o banco de fotos não respondeu a tempo',
+    'InvalidStateError': 'o banco de fotos foi fechado durante a leitura',
+    'IndexedDB indisponível': 'o banco de fotos não está disponível neste navegador',
+    'transação abortada': 'a leitura do banco de fotos foi interrompida',
+    'UnknownError': 'erro desconhecido do banco de fotos'
+  };
+  return mapa[m] || m;
+}
+
+function _exportTudoMostrarResultado(ui, res) {
+  const r = res.resumo;
+  ui.limpar();
+  ui.emGeracao = false;
+  const pl = (n, um, varios) => n + (n === 1 ? um : varios);
+  const conferido = !!(r.conferencia && r.conferencia.ok);
+  const escuro = document.documentElement.getAttribute('data-theme') === 'dark';
+  const corOk = escuro ? 'var(--status-ok)' : '#17713D'; // o verde padrão do tema claro fica abaixo de 4,5:1 sobre branco
+  const corAviso = 'var(--status-aviso)';
+  const corGrave = 'var(--status-pendente)';
+  const danificadas = r.fotosInvalidas.filter((v) => v.guardada !== false);
+  const semImagem = r.fotosInvalidas.filter((v) => v.guardada === false);
+  const naoContou = r.fotosNoIndexedDB == null;
+  const temAvisos = danificadas.length > 0 || semImagem.length > 0 || r.estadoSalvoDivergente || r.alteradoDuranteBackup || r.salvoIlegivel || naoContou || r.fotosSemIdEmbutidas > 0;
+
+  let status, cor;
+  if (!conferido) { status = 'O arquivo gerado NÃO passou na conferência' + (r.completo ? '' : ' (e o backup também está incompleto)') + '. Não use este arquivo como backup: feche e tente de novo. Se acontecer outra vez, não apague nada e avise o suporte.'; cor = corGrave; }
+  else if (!r.completo) { status = 'Backup INCOMPLETO: algumas fotos ou itens não entraram no arquivo. Leia os avisos abaixo.'; cor = corGrave; }
+  else if (!r.verificado) { status = 'Backup feito, mas não deu para conferir se o arquivo está intacto (este navegador não oferece a verificação fora de https).'; cor = corAviso; }
+  else if (temAvisos) { status = 'Backup pronto e conferido, com avisos (leia abaixo). Agora baixe o arquivo.'; cor = corAviso; }
+  else { status = 'Backup pronto e conferido: o arquivo foi lido de novo e está igual ao que o app tinha ao começar. Agora baixe o arquivo.'; cor = corOk; }
+  const linhaStatus = ui.texto(status, 'margin:6px 0;font-weight:700;color:' + cor);
+  linhaStatus.setAttribute('role', cor === corOk ? 'status' : 'alert'); // leitores de tela anunciam o veredito
+
+  const lista = _wbmigEl('ul', null, 'margin:8px 0 8px 18px;padding:0');
+  const linhas = [pl(r.nOS, ' ordem de serviço', ' ordens de serviço')];
+  linhas.push(pl(r.fotosUnicas, ' foto usada', ' fotos usadas') + ' pelas OS: ' + r.fotosNoArquivoDeOS + ' no arquivo' +
+    (r.fotosSoNaOS ? ', ' + r.fotosSoNaOS + ' dentro da própria OS' : ''));
+  if (r.fotosBancoDifereDaOS) linhas.push(pl(r.fotosBancoDifereDaOS, ' das fotos dentro da OS tem', ' das fotos dentro da OS têm') + ' no banco outra imagem (por exemplo, foi girada depois do relatório): as duas versões foram guardadas');
+  if (r.fotosOrfasExportadas) linhas.push(pl(r.fotosOrfasExportadas, ' foto que nenhuma OS da tela usa também foi guardada', ' fotos que nenhuma OS da tela usa também foram guardadas'));
+  linhas.push(pl(r.ausentes.length, ' ausente', ' ausentes') + ' · ' + pl(r.erros.length, ' com erro de leitura', ' com erro de leitura'));
+  linhas.push(naoContou ? 'Fotos guardadas no app: não foi possível contar' : 'Fotos guardadas no app: ' + r.fotosNoIndexedDB);
+  linhas.push('Arquivos: ' + res.arquivos.map((a) => _wbmigTamanho(a.bytes)).join(' + '));
+  for (const t of linhas) lista.appendChild(_wbmigEl('li', t));
+  ui.corpo.appendChild(lista);
+
+  const aviso = 'margin:8px 0;font-size:13px;color:' + corAviso;
+  const grave = 'margin:8px 0;font-size:13px;color:' + corGrave;
+  const resumirLista = (itens, max) => itens.slice(0, max).join('; ') + (itens.length > max ? ' e mais ' + (itens.length - max) : '');
+  if (!conferido && r.conferencia) {
+    ui.texto('O que não conferiu: ' + resumirLista(r.conferencia.falhas, 5) + '.', grave);
+  }
+  if (r.ausentes.length) {
+    // agrupa por OS e item, com a contagem de fotos
+    const grupos = new Map();
+    for (const a of r.ausentesDetalhe) {
+      for (const c of (a.onde.length ? a.onde.slice(0, 1) : [{ numero: '', osId: a.id, sistema: '' }])) {
+        const chave = 'OS ' + (c.numero || c.osId) + (c.sistema ? ' (' + c.sistema + ')' : '');
+        grupos.set(chave, (grupos.get(chave) || 0) + 1);
+      }
+    }
+    const textos = [...grupos].map(([k, n]) => k + ': ' + pl(n, ' foto', ' fotos'));
+    ui.texto('Fotos que a OS usa mas que não foram encontradas neste aparelho (já faltavam antes do backup): ' + resumirLista(textos, 6) + '. O backup anota quais são. Se precisar delas, adicione a foto de novo na OS.', aviso);
+  }
+  if (r.erros.length) {
+    const textos = r.erros.map((e) => (e.onde || (e.id ? 'foto ' + e.id : 'geral')) + ' — ' + _wbmigMotivo(e.motivo));
+    ui.texto(pl(r.erros.length, ' item não pôde', ' itens não puderam') + ' ser lido' + (r.erros.length === 1 ? '' : 's') + ': ' + resumirLista(textos, 5) + '. Feche e tente de novo; se continuar, não apague nada e avise o suporte.', grave);
+  }
+  if (danificadas.length) {
+    ui.texto(pl(danificadas.length, ' foto não parece', ' fotos não parecem') + ' uma imagem conhecida (JPEG, PNG, GIF ou WebP) e ' + (danificadas.length === 1 ? 'foi guardada como estava: ' : 'foram guardadas como estavam: ') +
+      resumirLista(danificadas.map((v) => v.id + ' (' + v.motivo + ')'), 5) + '. Já estava assim no aparelho; nada a fazer no backup.', aviso);
+  }
+  if (semImagem.length) {
+    ui.texto(pl(semImagem.length, ' foto do banco não pôde ser guardada', ' fotos do banco não puderam ser guardadas') + ' (sem imagem, ou a cópia do banco não abre e a boa está dentro da OS): ' + resumirLista(semImagem.map((v) => v.id), 5) + '.', aviso);
+  }
+  if (r.fotosSemIdEmbutidas) {
+    ui.texto(pl(r.fotosSemIdEmbutidas, ' foto está dentro da OS sem identificador', ' fotos estão dentro das OS sem identificador') + ': a imagem foi guardada junto com a OS.', aviso);
+  }
+  if (r.espacoCheio) {
+    ui.texto('O aparelho está sem espaço: as suas últimas edições NÃO foram salvas no aparelho, só neste backup. Baixe o arquivo agora e libere espaço antes de continuar.', grave);
+  } else if (r.estadoSalvoDivergente) {
+    const so = r.salvoSoOS.length ? ' OS que só existem no texto salvo: ' + resumirLista(r.salvoSoOS.map((o) => o.numero), 6) + '.' : '';
+    const dif = r.salvoDifere.length ? ' OS diferentes entre o texto salvo e a tela: ' + resumirLista(r.salvoDifere.map((o) => o.numero), 6) + '.' : '';
+    ui.texto('O texto salvo no aparelho é diferente do que está na tela (outra aba do app editou os dados, o app ajustou dados antigos ao abrir, ou o aparelho está sem espaço para salvar). O arquivo guarda as duas cópias.' + so + dif +
+      (so || dif ? ' Avise o suporte antes de apagar qualquer coisa neste aparelho.' : ''), aviso);
+  }
+  if (r.salvoIlegivel) {
+    ui.texto('Não foi possível ler o texto salvo no aparelho. O arquivo guarda o que está na tela.', aviso);
+  }
+  if (naoContou) {
+    ui.texto('Não foi possível conferir quantas fotos o banco de fotos guarda; por isso não dá para garantir que nenhuma ficou de fora.', aviso);
+  }
+  if (r.alteradoDuranteBackup) {
+    ui.texto('Os dados mudaram enquanto o backup era gerado (por exemplo, uma foto terminou de ser adicionada). O arquivo guarda o estado do começo da exportação: gere de novo para incluir as mudanças.', aviso);
+  }
+  const nota = 'margin:10px 0 0;font-size:12.5px;color:var(--texto-suave)';
+  if (conferido) {
+    ui.texto('Este arquivo é uma cópia de segurança. O app ainda não consegue abri-lo sozinho: para recuperar dados, avise o suporte e a equipe restaura a partir dele. Não use "Importar JSON" com este arquivo. Para apagar uma OS com segurança, exporte também o JSON dela.', nota);
+  }
+  ui.texto('Edições feitas direto no texto do relatório gerado não ficam salvas no aparelho e, por isso, não entram no backup. O PDF enviado ao cliente continua sendo o registro do que foi entregue.', nota);
+  ui.texto('Este arquivo contém CPF, assinaturas, fotos e coordenadas dos clientes. Guarde-o só em local da empresa (computador ou Drive da empresa) e não envie por WhatsApp.', nota);
+  if (res.arquivos.length > 1) {
+    ui.texto('O backup saiu em ' + res.arquivos.length + ' partes. Baixe todas: só juntas elas formam o backup.', 'margin:6px 0 0;font-size:12.5px;font-weight:600');
+  }
+
+  // Partes cujo download já foi pedido. Sem botão de compartilhar de propósito: o arquivo tem CPF e fotos de
+  // clientes e não deve sair por qualquer aplicativo.
+  const pedidas = new Set();
+  ui.totalPartes = res.arquivos.length;
+  ui.pendencias = conferido ? () => res.arquivos.length - pedidas.size : null;
+  res.arquivos.forEach((arq, i) => {
+    const tam = _wbmigTamanho(arq.bytes);
+    const rotuloBase = res.arquivos.length > 1 ? 'Baixar parte ' + (i + 1) + ' de ' + res.arquivos.length + ' (' + tam + ')' : 'Baixar arquivo (' + tam + ')';
+    const rotulo = conferido ? rotuloBase : rotuloBase + ' mesmo assim (não recomendado)';
+    const b = ui.botao(rotulo, () => {
+      try {
+        _exportTudoBaixar(arq, r);
+      } catch (e) {
+        ui.estado('Não foi possível pedir o download: ' + ((e && e.message) || 'erro desconhecido') + '.', corGrave);
+        return;
+      }
+      pedidas.add(i);
+      b.textContent = '✓ ' + rotulo;
+      // Mudou o conjunto de partes pedidas: o aviso de "sair sem baixar" volta a valer.
+      ui.confirmouSair = false;
+      if (ui.botaoFechar) ui.botaoFechar.textContent = 'Fechar';
+      const faltam = res.arquivos.length - pedidas.size;
+      ui.estado('Pedido de download enviado: ' + arq.nome + ' (' + tam + '). Confira se o arquivo apareceu na pasta de downloads' + (conferido && r.completo ? ' antes de apagar qualquer coisa' : '') + '.' +
+        (faltam > 0 ? ' ' + (faltam === 1 ? 'Falta 1 parte.' : 'Faltam ' + faltam + ' partes.') : ''), cor);
+    }, conferido && i === 0);
+  });
+  ui.botaoFechar = ui.botao('Fechar', () => ui.tentarFechar(), false);
+}
+
+async function exportarTudo() {
+  // A trava só é solta quando a janela fecha. Se ela ficou ligada sem janela, é resto de uma falha: solta.
+  if (_exportTudoEmAndamento && !document.querySelector('[aria-label="Exportar tudo"]')) _exportTudoEmAndamento = false;
+  if (_exportTudoEmAndamento) {
+    const aberta = document.querySelector('[aria-label="Exportar tudo"]');
+    try { if (aberta) aberta.focus(); } catch (e) { /* segue */ } // o toast ficaria coberto pela janela: só traz a janela para a frente
+    return;
+  }
+  if (_wbmigFotoEmProcessamento()) { toast('Há fotos sendo adicionadas agora. Espere terminar e tente de novo.'); return; }
+  _exportTudoEmAndamento = true;
+  let ui = null;
+  let travaTela = null;
+  let aoVoltarParaATela = null;
+  try {
+    ui = _exportTudoJanela();
+    ui.haviaPendente = !!_saveDebounceTimer; // para saber depois se o salvamento antecipado falhou
+    flushSalvarEstado();
+    ui.texto('O backup só copia: não apaga nem muda as suas OS e fotos. Isto pode levar alguns instantes se houver muitas fotos.', 'margin:6px 0;font-size:13px;color:var(--texto-suave)');
+    ui.botao('Cancelar', () => ui.tentarFechar(), false); // antes de qualquer espera: a janela nunca fica sem botão
+    // Aparelho com muitos dados: avisa que pode demorar e pede a tela ligada (o celular suspende o app quando a tela apaga).
+    try {
+      if (navigator.storage && typeof navigator.storage.estimate === 'function') {
+        const est = await _wbmigComTempo(navigator.storage.estimate(), 3000, null);
+        if (est && est.usage > 250 * 1048576) {
+          ui.texto('Este app guarda cerca de ' + _wbmigTamanho(est.usage) + ' de dados neste aparelho. A exportação pode levar alguns minutos: mantenha a tela ligada e o app aberto.', 'margin:6px 0;font-size:13px;font-weight:600');
+        }
+      }
+    } catch (e) { /* sem estimativa de espaço: segue */ }
+    const pedirTelaLigada = async () => {
+      try {
+        if (navigator.wakeLock && typeof navigator.wakeLock.request === 'function' && (!travaTela || travaTela.released)) {
+          const pedido = navigator.wakeLock.request('screen');
+          const adotar = (s) => {
+            // Só fica com a trava se a exportação ainda está rodando e nenhuma outra está ativa; senão solta na hora,
+            // para a tela não ficar ligada sem dono (resposta tardia ou pedido duplicado).
+            if (s && ui && ui.emGeracao && (!travaTela || travaTela.released)) { travaTela = s; return; }
+            if (s) { try { s.release(); } catch (e) { /* já solta */ } }
+          };
+          const nova = await _wbmigComTempo(pedido, 3000, null);
+          if (nova) adotar(nova);
+          else pedido.then(adotar, () => {}); // passou do prazo: se a resposta chegar depois, adota ou solta
+        }
+      } catch (e) { /* sem tela ligada: segue */ }
+    };
+    await pedirTelaLigada();
+    // A tela ligada se perde quando o app vai para segundo plano: pede de novo ao voltar.
+    aoVoltarParaATela = () => { if (!document.hidden && ui && ui.emGeracao) pedirTelaLigada(); };
+    document.addEventListener('visibilitychange', aoVoltarParaATela);
+    const res = await _exportTudoGerar(ui);
+    if (!res) return; // cancelado: a janela já foi fechada
+    if (res.vazio) {
+      ui.limpar();
+      ui.emGeracao = false;
+      ui.texto('Não há ordens de serviço nem fotos neste aparelho para exportar.', 'margin:6px 0;font-weight:700');
+      ui.botao('Fechar', () => ui.tentarFechar(), true);
+      return;
+    }
+    _exportTudoMostrarResultado(ui, res);
+  } catch (e) {
+    console.error('Falha em Exportar tudo:', e);
+    if (ui) {
+      ui.limpar();
+      ui.emGeracao = false;
+      ui.pendencias = null;
+      // Mensagem própria (em português) quando o erro é nosso; para erro do navegador, um texto fixo.
+      const motivo = e && e.message && /[ãõáéíóúç]/.test(e.message) ? e.message.replace(/[.]+$/, '') : 'ocorreu um erro inesperado';
+      ui.texto('Não foi possível gerar o backup: ' + motivo + '. Nenhuma OS ou foto foi apagada.', 'margin:6px 0;font-weight:700;color:var(--status-pendente)');
+      ui.botao('Fechar', () => ui.tentarFechar(), true);
+    } else {
+      _exportTudoEmAndamento = false;
+      toast('Não foi possível abrir a janela do backup.');
+    }
+  } finally {
+    if (aoVoltarParaATela) document.removeEventListener('visibilitychange', aoVoltarParaATela);
+    try { if (travaTela) await travaTela.release(); } catch (e) { /* já liberada */ }
+    if (!ui) _exportTudoEmAndamento = false;
+  }
 }
 
 /* ============================================================
@@ -6962,7 +8018,7 @@ function registrarServiceWorker() {
 /* ============================================================
    INICIALIZAÇÃO
    ============================================================ */
-const WB_BUILD_VERSION = 'v1.8.0 · 2026-07-23';
+const WB_BUILD_VERSION = 'v1.8.2 · 2026-11-22';
 
 function init() {
   console.log('[Wonder Boat] Build ' + WB_BUILD_VERSION + ' — init() iniciado');
