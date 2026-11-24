@@ -2262,7 +2262,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         Limpar Tudo
       </button>
     </div>
-    <div id="wbVersionLabel" style="font-size:10px;color:#8fa6bf;text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em">build v1.8.3 · 2026-11-23</div>
+    <div id="wbVersionLabel" style="font-size:10px;color:#8fa6bf;text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em">build v1.8.4 · 2026-11-24</div>
   </aside>
 
   <!-- ============================================================
@@ -2659,6 +2659,7 @@ async function idbSalvarFoto(foto) {
       tx.objectStore(STORE_FOTOS).put(foto);
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => { console.error(tx.error); resolve(false); };
+      tx.onabort = () => { console.error(tx.error); resolve(false); };   // falha no commit (cota): sem isto a promessa nunca resolvia
     } catch (e) { console.error(e); resolve(false); }
   });
 }
@@ -2685,6 +2686,7 @@ async function idbExcluirFoto(id) {
       tx.objectStore(STORE_FOTOS).delete(id);
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
     } catch (e) { resolve(); }
   });
 }
@@ -2698,6 +2700,7 @@ async function idbLimparTudo() {
       tx.objectStore(STORE_FOTOS).clear();
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
     } catch (e) { resolve(); }
   });
 }
@@ -2849,9 +2852,11 @@ function _salvarEstadoAgora() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     indicarAutoSave();
+    return true;
   } catch (e) {
     console.error('Erro ao salvar estado:', e);
     toast('Espaço de armazenamento esgotado — exporte JSON e libere espaço.');
+    return false;
   }
 }
 
@@ -2874,8 +2879,9 @@ function flushSalvarEstado() {
   if (_saveDebounceTimer) {
     clearTimeout(_saveDebounceTimer);
     _saveDebounceTimer = null;
-    _salvarEstadoAgora();
+    return _salvarEstadoAgora();
   }
+  return true;   // nada pendente
 }
 
 function carregarEstado() {
@@ -3490,10 +3496,11 @@ async function removerFoto(itemId, fotoId) {
   if (!it) return;
   it.fotos = it.fotos.filter(f => f.id !== fotoId);
   _fotosCache.delete(fotoId);
-  await idbExcluirFoto(fotoId);
   os.atualizadoEm = new Date().toISOString();
   salvarEstado();
+  const gravouEstado = flushSalvarEstado() !== false;   // grava a lista ANTES de apagar a imagem: se o app fechar no meio sobra uma imagem órfã, não uma foto "fantasma"
   renderItens();
+  if (gravouEstado && !_fotoEmUsoPorOutraOS(fotoId, null)) await idbExcluirFoto(fotoId);   // OS duplicada por versão antiga usa a mesma foto
 }
 
 /* ============================================================
@@ -3886,9 +3893,9 @@ async function removerFotoObservacao(fotoId) {
   // Grava a lista ANTES de apagar a imagem: se o app fechar no meio, sobra uma imagem órfã (inofensiva)
   // em vez de uma foto "fantasma" (referência sem imagem). O flush sozinho só grava se houver salvamento pendente.
   salvarEstado();
-  flushSalvarEstado();
+  const gravouEstado = flushSalvarEstado() !== false;   // sem espaço para gravar: a imagem fica (órfã), a foto não volta "fantasma"
   renderObservacoesFotos();
-  await idbExcluirFoto(fotoId);
+  if (gravouEstado && !_fotoEmUsoPorOutraOS(fotoId, null)) await idbExcluirFoto(fotoId);   // OS duplicada por versão antiga usa a mesma foto
 }
 
 function atualizarFotoObservacao(fotoId, campo, valor) {
@@ -4084,19 +4091,99 @@ function abrirOS(id) {
   if (window.innerWidth < WB_MOBILE_BREAKPOINT) document.getElementById('sidebar').classList.remove('show');
 }
 
-function duplicarOS(id) {
+// Todas as fotos de uma OS (itens e observações finais). Defensiva: dado malformado não derruba quem chama.
+function _fotosDaOS(os) {
+  const fotos = [];
+  const itens = Array.isArray(os && os.itens) ? os.itens : [];
+  itens.forEach(it => { if (it && Array.isArray(it.fotos)) it.fotos.forEach(f => { if (f) fotos.push(f); }); });
+  const obs = (os && os.meta && Array.isArray(os.meta.observacoesFotos)) ? os.meta.observacoesFotos : [];
+  obs.forEach(f => { if (f) fotos.push(f); });
+  return fotos;
+}
+
+// OS duplicadas por versões antigas do app compartilham os ids das fotos (e o registro delas no banco). Por isso a imagem
+// só pode ser apagada do banco se nenhuma OS ainda usa aquele id. osIdIgnorado: uma OS a desconsiderar (ou null para olhar
+// todas, quando a foto já saiu da lista da OS de origem). Na dúvida, devolve true: não apaga.
+function _fotoEmUsoPorOutraOS(fotoId, osIdIgnorado) {
+  try {
+    for (const oid of Object.keys(state.os || {})) {
+      if (oid === osIdIgnorado) continue;
+      if (_fotosDaOS(state.os[oid]).some(f => f.id === fotoId)) return true;
+    }
+    return false;
+  } catch (e) {
+    console.warn('Não foi possível conferir se a foto é usada por outra OS; a imagem será mantida:', e);
+    return true;
+  }
+}
+
+let _duplicandoOS = false;
+async function duplicarOS(id) {
   const orig = state.os[id];
   if (!orig) return;
-  const copia = JSON.parse(JSON.stringify(orig));
-  copia.id = gerarId('os', 7);
-  copia.criadoEm = new Date().toISOString();
-  copia.atualizadoEm = new Date().toISOString();
-  copia.meta.numero = (orig.meta.numero || '') + ' (cópia)';
-  state.os[copia.id] = copia;
-  state.currentOSId = copia.id;
-  salvarEstado();
-  renderTudo();
-  toast('OS duplicada com sucesso.');
+  if (_duplicandoOS) return;   // toque duplo: uma cópia só
+  // Fotos ainda sendo adicionadas (a própria chamada conta 1): a cópia sairia sem as últimas.
+  if (_wbmigFotosEmAndamento > 1) { toast('Há fotos sendo adicionadas. Espere terminar e duplique de novo.'); return; }
+  _duplicandoOS = true;
+  const gravadas = [];         // registros novos já gravados no banco (para desfazer se algo falhar antes de a cópia existir)
+  let confirmada = false;      // a cópia já está no estado: daqui em diante não se desfaz mais
+  let comOverlay = false;
+  try {
+    if (recognitionButtonId) pararVoz();   // como em abrirOS: um ditado em andamento não pode cair na cópia
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const copia = JSON.parse(JSON.stringify(orig));
+    copia.id = gerarId('os', 7);
+    copia.criadoEm = new Date().toISOString();
+    copia.atualizadoEm = new Date().toISOString();
+    copia.meta.numero = (orig.meta.numero || '') + ' (cópia)';
+    // A cópia é um rascunho novo: sem o atesto do cliente, sem a marca de finalizada e sem relatório gerado.
+    copia.meta.assinaturaCliente = { nome: '', documento: '', dataUrl: '', salvo: false, dataSalvamento: '' };
+    copia.meta.relatorioFinalizado = false;
+    delete copia.meta.dataFinalizacao;
+    copia.relatorioGerado = null;
+    // Fotos próprias: id novo e registro novo no banco. Antes a cópia usava as MESMAS fotos da original, e excluir a cópia
+    // (ou remover/girar uma foto nela) apagava ou alterava as fotos da original.
+    const fotos = _fotosDaOS(copia);
+    if (fotos.length > 0) {   // a tela fica bloqueada enquanto copia: nada muda no meio (excluir, trocar de OS, digitar)
+      comOverlay = true;
+      mostrarOverlayProcessando('Duplicando a OS e as fotos…');
+    }
+    let ausentes = 0;
+    for (const f of fotos) {
+      const novoId = gerarId('fo', 6);
+      if (!f.dataUrl) {   // foto com a imagem embutida na OS (formato antigo) já foi copiada junto com a OS
+        const lido = await _idbLerFotoParaExport(f.id);   // distingue "ausente" de "erro de leitura" e reabre a conexão se preciso
+        if (lido.estado === 'erro') throw new Error('não foi possível ler uma foto (' + lido.motivo + ')');
+        if (lido.estado === 'ok' && lido.reg && lido.reg.dataUrl) {
+          gravadas.push(novoId);   // antes de gravar: se estourar o tempo e a gravação concluir depois, ela também é desfeita
+          const gravou = await _wbmigComTempo(idbSalvarFoto({ ...lido.reg, id: novoId }), _WBMIG_TEMPO_BANCO_MS, false);
+          if (!gravou) throw new Error('não foi possível gravar a cópia de uma foto');
+          _fotosCache.set(novoId, lido.reg.dataUrl);
+        } else {
+          ausentes++;   // a original já estava sem a imagem: a cópia espelha a ausência
+        }
+      }
+      f.id = novoId;
+    }
+    state.os[copia.id] = copia;
+    confirmada = true;
+    state.currentOSId = copia.id;
+    salvarEstado();
+    const gravou = flushSalvarEstado() !== false;   // se não coube, o aviso de armazenamento cheio já foi mostrado: não o esconde
+    renderTudo();
+    if (gravou) toast('OS duplicada com sucesso.' + (ausentes ? ' ' + ausentes + ' foto(s) já estavam sem imagem na original.' : ''));
+  } catch (e) {
+    console.error('Falha ao duplicar a OS:', e);
+    if (!confirmada) {
+      await Promise.all(gravadas.map(nid => { _fotosCache.delete(nid); return _wbmigComTempo(idbExcluirFoto(nid), 5000, null); }));
+      toast('Não foi possível duplicar a OS (as fotos não puderam ser copiadas). Nada foi alterado.');
+    } else {
+      toast('A OS foi duplicada, mas houve um erro ao atualizar a tela. Feche e abra o app.');
+    }
+  } finally {
+    if (comOverlay) ocultarOverlayProcessando();
+    _duplicandoOS = false;
+  }
 }
 
 function excluirOS(id) {
@@ -4110,22 +4197,24 @@ function excluirOS(id) {
     `Excluir OS ${os.meta.numero || ''}?`,
     'Esta ação não pode ser desfeita. Considere exportar para JSON antes.',
     async () => {
-      // Remove fotos órfãs do IndexedDB (itens + observações)
-      const fotosIds = [];
-      (os.itens || []).forEach(it => (it.fotos || []).forEach(f => fotosIds.push(f.id)));
-      ((os.meta && os.meta.observacoesFotos) || []).forEach(f => fotosIds.push(f.id));
-      for (const fid of fotosIds) {
-        _fotosCache.delete(fid);
-        await idbExcluirFoto(fid);
-      }
+      const fotosIds = _fotosDaOS(os).map(f => f.id);   // itens + observações
       delete state.os[id];
+      _relatoriosEditados.delete(id);
       if (state.currentOSId === id) {
         const ids = Object.keys(state.os);
         state.currentOSId = ids.length ? ids[0] : null;
       }
+      // A OS sai do estado e é gravada ANTES de apagar as imagens: se o app fechar no meio, sobram imagens órfãs
+      // (inofensivas) em vez de uma OS com fotos "fantasma".
       salvarEstado();
+      const gravouEstado = flushSalvarEstado() !== false;   // sem espaço para gravar: as imagens ficam (órfãs), não viram fotos "fantasma"
       renderTudo();
       toast('OS excluída.');
+      for (const fid of fotosIds) {
+        _fotosCache.delete(fid);
+        // OS duplicadas por versões antigas compartilham fotos: só apaga a imagem se nenhuma outra OS a usa
+        if (gravouEstado && !_fotoEmUsoPorOutraOS(fid, null)) await idbExcluirFoto(fid);
+      }
     }
   );
 }
@@ -4137,6 +4226,7 @@ function limparTudo() {
     async () => {
       state = { currentOSId: null, os: {} };
       _fotosCache.clear();
+      _descartarRelatorios();   // nenhum relatório (guardado ou na tela) sobrevive ao "limpar tudo"
       localStorage.removeItem(STORAGE_KEY);
       await idbLimparTudo();
       carregarDemoOS();
@@ -4219,7 +4309,7 @@ function importarJSON(ev) {
         });
       }
       const os = {
-        id: parsed.id || padrao.id,
+        id: String(parsed.id || padrao.id),
         criadoEm: parsed.criadoEm || padrao.criadoEm,
         atualizadoEm: new Date().toISOString(),
         meta: Object.assign({}, padrao.meta, parsed.meta || {}),
@@ -4261,6 +4351,7 @@ function importarJSON(ev) {
 
       state.os[os.id] = os;
       state.currentOSId = os.id;
+      _descartarRelatorios(os.id);   // o relatório antigo dessa OS (guardado ou na tela) não vale para os dados importados
       salvarEstado();
       renderTudo();
       toast('OS importada com sucesso.');
@@ -4336,11 +4427,11 @@ const WBMIG_VERSAO_FORMATO = 1;
 let WBMIG_LIMITE_PARTE_BYTES = 120 * 1024 * 1024; // let: os testes automáticos reduzem o limite para forçar várias partes
 const ULTIMO_EXPORT_KEY = 'wonderboat_ultimo_export_v1';
 let _exportTudoEmAndamento = false;
-let _wbmigFotosEmAndamento = 0;   // fotos sendo adicionadas agora (adicionarFoto e adicionarFotoObservacao)
+let _wbmigFotosEmAndamento = 0;   // fotos sendo adicionadas ou copiadas agora (adicionarFoto, adicionarFotoObservacao e duplicarOS)
 (function () {
-  // Conta as adições de foto em andamento, com try/finally (uma exceção não deixa o contador preso). Preserva
-  // argumentos, this, retorno e erros das funções originais.
-  for (const nome of ['adicionarFoto', 'adicionarFotoObservacao']) {
+  // Conta as adições de foto (e a duplicação de OS, que copia fotos) em andamento, com try/finally (uma exceção não deixa
+  // o contador preso). Preserva argumentos, this, retorno e erros das funções originais.
+  for (const nome of ['adicionarFoto', 'adicionarFotoObservacao', 'duplicarOS']) {
     const original = window[nome];
     if (typeof original !== 'function' || original._wbmigEnvolvida) continue;
     const envolvida = async function () {
@@ -5254,7 +5345,7 @@ async function exportarTudo() {
     try { if (aberta) aberta.focus(); } catch (e) { /* segue */ } // o toast ficaria coberto pela janela: só traz a janela para a frente
     return;
   }
-  if (_wbmigFotoEmProcessamento()) { toast('Há fotos sendo adicionadas agora. Espere terminar e tente de novo.'); return; }
+  if (_wbmigFotoEmProcessamento()) { toast('Há fotos sendo adicionadas ou copiadas agora. Espere terminar e tente de novo.'); return; }
   _exportTudoEmAndamento = true;
   let ui = null;
   let travaTela = null;
@@ -5943,10 +6034,15 @@ function _pdfLockLiberar() {
    páginas A4 retrato e empacota num Blob PDF via jsPDF. Retorna o Blob
    pronto para download, anexação à Web Share API ou compartilhamento.
    ============================================================ */
-async function gerarPDFBlob() {
+async function gerarPDFBlob(osIdEsperado) {
   const rel = document.getElementById('relatorio');
   if (!rel || rel.querySelector('.empty-state')) {
     throw new Error('Relatório vazio — gere antes.');
+  }
+  // O relatório na tela vale só para a OS que o gerou: nunca sai o PDF de uma OS com o relatório de outra.
+  const osDoPdf = osIdEsperado ? { id: osIdEsperado } : osAtual();
+  if (osDoPdf && rel.dataset.osId !== osDoPdf.id) {
+    throw new Error('O relatório na tela é de outra OS — gere o relatório desta OS antes.');
   }
   if (typeof html2canvas !== 'function' || !window.jspdf) {
     throw new Error('Bibliotecas de PDF indisponíveis — recarregue a página.');
@@ -6436,15 +6532,15 @@ async function compartilharWhatsApp() {
   // de prosseguir. Reduz o atrito de exigir clique manual em "Gerar Relatório"
   // antes de exportar — desde que os campos obrigatórios já estejam preenchidos.
   let rel = document.getElementById('relatorio');
-  if (!rel || rel.querySelector('.empty-state') || !rel.innerText.trim()) {
-    console.log('[Wonder Boat] Relatório vazio — gerando automaticamente antes de compartilhar');
+  if (!rel || rel.querySelector('.empty-state') || !rel.innerText.trim() || rel.dataset.osId !== os.id) {
+    console.log('[Wonder Boat] Relatório vazio ou de outra OS — gerando automaticamente antes de compartilhar');
     try {
       await gerarRelatorio({ skipValidation: true, force: true, silencioso: true });
       rel = document.getElementById('relatorio');
     } catch (e) {
       console.error('[Wonder Boat] Falha ao auto-gerar relatório:', e);
     }
-    if (!rel || rel.querySelector('.empty-state') || !rel.innerText.trim()) {
+    if (!rel || rel.querySelector('.empty-state') || !rel.innerText.trim() || rel.dataset.osId !== os.id) {
       toast('Não foi possível gerar o relatório automaticamente. Vá à aba "Relatório Final" e clique em "Gerar Relatório".');
       return;
     }
@@ -6493,7 +6589,7 @@ async function _executarCompartilhamentoWhatsApp(os) {
   mostrarOverlayProcessando('Gerando PDF do relatório...\nEsta operação leva alguns segundos para preservar a nitidez das fotos.');
   let pdfBlob;
   try {
-    pdfBlob = await gerarPDFBlob();
+    pdfBlob = await gerarPDFBlob(os.id);
   } catch (e) {
     console.error('Falha ao gerar PDF para compartilhamento:', e);
     ocultarOverlayProcessando();
@@ -6585,15 +6681,15 @@ async function exportarPDF() {
 
   // Camada 2 — relatório precisa estar gerado. Se não estiver, gera automaticamente.
   let rel = document.getElementById('relatorio');
-  if (!rel || rel.querySelector('.empty-state') || !rel.innerText.trim()) {
-    console.log('[Wonder Boat] Relatório vazio — gerando automaticamente antes de exportar');
+  if (!rel || rel.querySelector('.empty-state') || !rel.innerText.trim() || rel.dataset.osId !== os.id) {
+    console.log('[Wonder Boat] Relatório vazio ou de outra OS — gerando automaticamente antes de exportar');
     try {
       await gerarRelatorio({ skipValidation: true, force: true, silencioso: true });
       rel = document.getElementById('relatorio');
     } catch (e) {
       console.error('[Wonder Boat] Falha ao auto-gerar relatório:', e);
     }
-    if (!rel || rel.querySelector('.empty-state') || !rel.innerText.trim()) {
+    if (!rel || rel.querySelector('.empty-state') || !rel.innerText.trim() || rel.dataset.osId !== os.id) {
       toast('Não foi possível gerar o relatório automaticamente. Vá à aba "Relatório Final" e clique em "Gerar Relatório".');
       return;
     }
@@ -6628,7 +6724,7 @@ async function _executarExportacaoPDF(os) {
   // que o arquivo baixado e o anexo enviado por WhatsApp sejam VISUALMENTE IDÊNTICOS.
   mostrarOverlayProcessando('Gerando PDF do relatório...\nEsta operação leva alguns segundos para preservar a nitidez das fotos.');
   try {
-    const pdfBlob = await gerarPDFBlob();
+    const pdfBlob = await gerarPDFBlob(os.id);
     const url = URL.createObjectURL(pdfBlob);
     const a = document.createElement('a');
     a.href = url;
@@ -6654,7 +6750,7 @@ function finalizarRelatorio() {
   const os = osAtual();
   if (!os) { toast('Nenhuma OS aberta.'); return; }
   const rel = document.getElementById('relatorio');
-  if (!rel || rel.querySelector('.empty-state')) {
+  if (!rel || rel.querySelector('.empty-state') || rel.dataset.osId !== os.id) {
     toast('Gere o relatório antes de finalizar.');
     return;
   }
@@ -6697,13 +6793,23 @@ function finalizarRelatorio() {
   confirmar(
     'Salvar e finalizar o relatório?',
     'Após salvar, todas as edições inline (resumo, registros técnicos, traduções, legendas, observações) serão BLOQUEADAS para preservar a integridade documental. Você poderá reabrir para edição posteriormente, mas será necessário finalizar novamente. Deseja prosseguir?',
-    () => finalizarRelatorioConfirmado()
+    () => finalizarRelatorioConfirmado(os)
   );
 }
 
-function finalizarRelatorioConfirmado() {
-  const os = osAtual();
+function finalizarRelatorioConfirmado(osAlvo) {
+  const os = osAlvo || osAtual();
   if (!os) return;
+  // O modal de confirmação pode ficar aberto enquanto a OS aberta muda: só finaliza se a OS, o relatório na tela e a
+  // assinatura ainda são os do clique.
+  if (osAlvo) {
+    const relAlvo = document.getElementById('relatorio');
+    const ass = osAlvo.meta && osAlvo.meta.assinaturaCliente;
+    if (state.currentOSId !== osAlvo.id || state.os[osAlvo.id] !== osAlvo || !relAlvo || relAlvo.dataset.osId !== osAlvo.id || !ass || !ass.salvo) {
+      toast('A OS aberta mudou. Abra a OS e finalize de novo.');
+      return;
+    }
+  }
   os.meta.relatorioFinalizado = true;
   os.meta.dataFinalizacao = new Date().toISOString();
   os.atualizadoEm = new Date().toISOString();
@@ -6725,14 +6831,16 @@ function aplicarBloqueioEdicao() {
     el.setAttribute('contenteditable', finalizado ? 'false' : 'true');
   });
   if (finalizado) {
-    rel.classList.add('relatorio-finalizado');
-    // Insere selo visual no topo se ainda não houver
-    if (!rel.querySelector('.selo-finalizado')) {
-      const selo = document.createElement('div');
-      selo.className = 'selo-finalizado';
-      const dt = os.meta.dataFinalizacao ? new Date(os.meta.dataFinalizacao) : new Date();
-      selo.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="18" height="18"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> <span>Relatório finalizado em ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} — edições bloqueadas</span>`;
-      rel.insertBefore(selo, rel.firstChild);
+    if (!rel.querySelector('.empty-state')) {   // tela sem relatório: só o rótulo do botão acompanha a OS
+      rel.classList.add('relatorio-finalizado');
+      // Insere selo visual no topo se ainda não houver
+      if (!rel.querySelector('.selo-finalizado')) {
+        const selo = document.createElement('div');
+        selo.className = 'selo-finalizado';
+        const dt = os.meta.dataFinalizacao ? new Date(os.meta.dataFinalizacao) : new Date();
+        selo.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="18" height="18"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> <span>Relatório finalizado em ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} — edições bloqueadas</span>`;
+        rel.insertBefore(selo, rel.firstChild);
+      }
     }
     const btn = document.getElementById('btnFinalizar');
     if (btn) {
@@ -6802,7 +6910,8 @@ async function gerarRelatorio(opts) {
 
   // Proteção contra sobrescrita acidental de edições inline
   const rel = document.getElementById('relatorio');
-  const jaTemConteudo = rel && !rel.querySelector('.empty-state') && rel.innerText.trim().length > 0;
+  // (só conta como "já gerado" o relatório que é desta OS: o de outra OS não tem edições a proteger)
+  const jaTemConteudo = rel && rel.dataset.osId === os.id && !rel.querySelector('.empty-state') && rel.innerText.trim().length > 0;
   if (jaTemConteudo && !opts.force) {
     confirmar(
       'Regenerar o relatório?',
@@ -6812,6 +6921,7 @@ async function gerarRelatorio(opts) {
     return;
   }
 
+  const minhaGeracao = ++_geracaoRelatorioSeq;
   const m = os.meta;
   const dataFmt = formatarData(m.data) || '—';
   const horarioFmt = (m.horarioInicio || m.horarioFim)
@@ -7095,16 +7205,13 @@ async function gerarRelatorio(opts) {
     </div>
   `;
 
-  document.getElementById('relatorio').innerHTML = html;
-  // Sanitiza paste em todos os contenteditable do relatório — força inserção
-  // de texto puro, evitando que cole HTML formatado de Word/Outlook quebre o doc.
-  document.querySelectorAll('#relatorio [contenteditable="true"]').forEach(el => {
-    el.addEventListener('paste', (e) => {
-      e.preventDefault();
-      const texto = (e.clipboardData || window.clipboardData).getData('text/plain');
-      document.execCommand('insertText', false, texto);
-    });
-  });
+  // Se o usuário trocou de OS enquanto o relatório era montado, ele é da OS anterior: descarta, não vai para a tela.
+  if (state.currentOSId !== os.id || minhaGeracao !== _geracaoRelatorioSeq) return;
+  const relDestino = document.getElementById('relatorio');
+  relDestino.innerHTML = html;
+  relDestino.dataset.osId = os.id;     // o relatório na tela vale só para a OS que o gerou
+  delete relDestino.dataset.editado;   // recém-gerado: ainda sem edição direto no texto
+  _ligarColarSeguroNoRelatorio();
   os.relatorioGerado = new Date().toISOString();
   salvarEstado();
   aplicarBloqueioEdicao();
@@ -7176,7 +7283,8 @@ function trocarAba(aba) {
   document.getElementById('abaRelatorio').style.display = aba === 'relatorio' ? '' : 'none';
   if (aba === 'relatorio') {
     const rel = document.getElementById('relatorio');
-    if (rel.querySelector('.empty-state')) {
+    const osDaAba = osAtual();
+    if (rel.querySelector('.empty-state') || (osDaAba && rel.dataset.osId !== osDaAba.id)) {
       gerarRelatorio();
     } else {
       // Reaplica eventual bloqueio se a OS já estava finalizada
@@ -7362,9 +7470,93 @@ function fecharModal() {
   setTimeout(_restaurarModalConfirm, 0);
 }
 
+/* ============================================================
+   RELATÓRIO NA TELA × OS ABERTA
+   O elemento #relatorio é um só e vale apenas para a OS que o gerou (data-os-id).
+   Antes, trocar de OS deixava na tela o relatório da OS anterior, e o PDF, o
+   compartilhamento e a finalização usavam esse relatório com os dados da OS errada.
+   ============================================================ */
+const RELATORIO_VAZIO_HTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><h3>Relatório ainda não gerado</h3><p>Preencha a coleta de campo e clique em <strong>Gerar Relatório</strong> para produzir o documento final no padrão Wonder Boat.</p></div>';
+
+// Relatórios com edição direto no texto (contenteditable), por OS, só na memória enquanto o app está aberto: a edição não
+// se perde ao trocar de OS e voltar (ela nunca foi gravada no estado). Relatório sem edição não é guardado: volta a ser
+// gerado com os dados atuais da OS.
+const _relatoriosEditados = new Map();
+const _RELATORIOS_EDITADOS_MAX = 3;
+
+function _ligarColarSeguroNoRelatorio() {
+  // Sanitiza paste em todos os contenteditable do relatório — força inserção
+  // de texto puro, evitando que cole HTML formatado de Word/Outlook quebre o doc.
+  document.querySelectorAll('#relatorio [contenteditable]').forEach(el => {
+    el.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const texto = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, texto);
+    });
+  });
+}
+
+// Contador de gerações do relatório: só a geração mais recente (e ainda válida) escreve na tela. Trocar o relatório da tela
+// (troca de OS, descarte) também invalida as gerações em andamento.
+let _geracaoRelatorioSeq = 0;
+
+// Chamada por renderTudo() quando o relatório na tela não é o da OS aberta (ou a tela ainda não tem dono).
+function _trocarRelatorioDaTela() {
+  const rel = document.getElementById('relatorio');
+  if (!rel) return;
+  _geracaoRelatorioSeq++;
+  const guardado = _relatoriosEditados.get(state.currentOSId);   // o da OS que está abrindo, se houver
+  _relatoriosEditados.delete(state.currentOSId);                  // sai do cache antes: o limite de 3 não pode descartar o que vai voltar
+  const dono = rel.dataset.osId;
+  if (dono && state.os[dono]) {
+    if (rel.dataset.editado === '1' && !rel.querySelector('.empty-state')) {
+      _relatoriosEditados.delete(dono);
+      _relatoriosEditados.set(dono, rel.innerHTML);
+      while (_relatoriosEditados.size > _RELATORIOS_EDITADOS_MAX) {
+        const maisAntigo = _relatoriosEditados.keys().next().value;
+        _relatoriosEditados.delete(maisAntigo);
+        const osDescartada = state.os[maisAntigo];
+        toast('As edições do relatório da OS ' + ((osDescartada && osDescartada.meta.numero) || '') + ' foram descartadas: o app guarda até ' + _RELATORIOS_EDITADOS_MAX + ' relatórios editados.');
+      }
+    } else {
+      _relatoriosEditados.delete(dono);
+    }
+  }
+  rel.classList.remove('relatorio-finalizado');
+  delete rel.dataset.osId;
+  delete rel.dataset.editado;
+  if (guardado) {
+    rel.innerHTML = guardado;
+    rel.dataset.osId = state.currentOSId;
+    rel.dataset.editado = '1';
+    _ligarColarSeguroNoRelatorio();
+  } else {
+    rel.innerHTML = RELATORIO_VAZIO_HTML;
+  }
+  aplicarBloqueioEdicao();   // trava/destrava conforme a OS aberta e acerta o rótulo do botão Finalizar
+}
+
+// Descarta o relatório guardado e o da tela: de uma OS (osId) ou de todas (sem argumento). Usada quando os dados da OS
+// são trocados por fora (importar JSON, limpar tudo, demonstração recarregada).
+function _descartarRelatorios(osId) {
+  const rel = document.getElementById('relatorio');
+  if (osId) _relatoriosEditados.delete(osId); else _relatoriosEditados.clear();
+  if (rel && (!osId || rel.dataset.osId === osId)) {
+    _geracaoRelatorioSeq++;
+    rel.innerHTML = RELATORIO_VAZIO_HTML;
+    rel.classList.remove('relatorio-finalizado');
+    delete rel.dataset.osId;
+    delete rel.dataset.editado;
+  }
+}
+
 function renderTudo() {
   renderSidebar();
   if (osAtual()) {
+    // O relatório na tela é de uma OS só: ao trocar de OS, o da anterior sai da tela e volta o editado desta, se houver
+    // (mesmo que a tela ainda não tenha dono). Vem antes dos render*: se algum falhar, o relatório antigo não fica na tela.
+    const relTela = document.getElementById('relatorio');
+    if (relTela && relTela.dataset.osId !== state.currentOSId) _trocarRelatorioDaTela();
     renderMetadados();
     renderItens();
     renderChecklist();
@@ -7385,6 +7577,10 @@ function renderTudo() {
     const rel = document.getElementById('relatorio');
     if (rel) {
       rel.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="64" height="64"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><h3>Nenhuma OS aberta</h3><p>Crie uma nova Ordem de Serviço para começar.</p></div>';
+      rel.classList.remove('relatorio-finalizado');
+      delete rel.dataset.osId;
+      delete rel.dataset.editado;
+      _relatoriosEditados.clear();
     }
   }
 }
@@ -7554,6 +7750,7 @@ function carregarDemoOS() {
 
   state.os[demo.id] = demo;
   state.currentOSId = demo.id;
+  _descartarRelatorios(demo.id);   // a demonstração recarregada não herda relatório antigo
 }
 
 /* ============================================================
@@ -8025,7 +8222,7 @@ function registrarServiceWorker() {
 /* ============================================================
    INICIALIZAÇÃO
    ============================================================ */
-const WB_BUILD_VERSION = 'v1.8.3 · 2026-11-23';
+const WB_BUILD_VERSION = 'v1.8.4 · 2026-11-24';
 
 function init() {
   console.log('[Wonder Boat] Build ' + WB_BUILD_VERSION + ' — init() iniciado');
@@ -8200,6 +8397,9 @@ function continuarInicializacao() {
       // Modal LGPD não fecha por Escape — força aceite consciente
     }
   });
+  // Marca o relatório da tela como "editado direto no texto": ao trocar de OS, só o editado é guardado na memória.
+  const relEditavel = document.getElementById('relatorio');
+  if (relEditavel) relEditavel.addEventListener('input', () => { relEditavel.dataset.editado = '1'; });
   // ANTES DO UNLOAD — flush imediato de qualquer keystroke pendente.
   // Cobre dois cenários:
   // (1) usuário fecha aba/navegador antes do debounce de 250ms expirar — sem
