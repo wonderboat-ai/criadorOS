@@ -14,7 +14,7 @@
      cache antigo) continua funcionando, em vez de ficar com cache vazio.
    ============================================================ */
 
-const CACHE_VERSION = 'wonderboat-v1.8.5';
+const CACHE_VERSION = 'wonderboat-v1.8.6';
 // Versão embutida no nome do cache: ao subir CACHE_VERSION, o filtro do
 // activate descarta automaticamente caches de versões anteriores.
 const CACHE_NAME = 'wonderboat-cache-' + CACHE_VERSION;

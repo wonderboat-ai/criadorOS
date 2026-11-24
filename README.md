@@ -3,7 +3,7 @@
 > Gerador de Relatórios Técnicos Navais auditáveis, para uso em campo.
 > Aplicativo web autocontido, offline-first, sem backend.
 
-![Versão](https://img.shields.io/badge/vers%C3%A3o-v1.8.5-148695)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-v1.8.6-148695)
 ![Status](https://img.shields.io/badge/status-produ%C3%A7%C3%A3o-1f8a4c)
 ![Licença](https://img.shields.io/badge/uso-interno%20Wonder%20Boat-C9A227)
 
@@ -54,6 +54,7 @@ institucionais auditáveis em PDF conforme as normas **NMEA 0400**, **NMEA 2000*
 - 🌓 **Tema claro/escuro** persistido, com contraste auditado (WCAG AA) em ambos
 - 🔄 **Importação/exportação JSON** para migração entre dispositivos
 - 🛟 **Exportar tudo (backup)** — um arquivo `.wbmig` com todas as OS e fotos do aparelho, relido e conferido por SHA-256 antes do download (botão na barra lateral). O app ainda não abre esse arquivo: ele é uma cópia de segurança para a equipe restaurar
+- 📥 **Importar backup (várias OS)** — lê o arquivo do auto-backup do app (ou vários JSON de OS) e traz todas as OS de uma vez, com as fotos. Nada é sobrescrito: OS iguais são ignoradas, OS diferentes ficam como estão no aparelho e entram no resumo, a demonstração é ignorada e imagens que faltavam são recuperadas ao importar um backup de outro aparelho
 
 ---
 

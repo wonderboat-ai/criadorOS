@@ -2235,6 +2235,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         Importar JSON
       </button>
       <input type="file" id="importJsonInput" accept=".json" style="display:none" onchange="importarJSON(event)">
+      <button class="btn btn-ghost btn-sm" id="btnImportarBackup" onclick="document.getElementById('importBackupInput').click()" title="Importa várias OS de uma vez: o arquivo de auto-backup do app ou vários JSON de OS. Não sobrescreve nada">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 7h8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Importar backup (várias OS)
+      </button>
+      <input type="file" id="importBackupInput" multiple style="display:none" onchange="importarBackup(event)">
       <button class="btn btn-ghost btn-sm" id="btnExportarTudo" onclick="exportarTudo()" title="Gera um arquivo de backup (.wbmig) com todas as OS e fotos deste app; sai em partes se for grande">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m0 0L8 7m4-4l4 4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Exportar tudo (backup)
@@ -2262,7 +2267,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         Limpar Tudo
       </button>
     </div>
-    <div id="wbVersionLabel" style="font-size:10px;color:#8fa6bf;text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em">build v1.8.5 · 2026-11-24</div>
+    <div id="wbVersionLabel" style="font-size:10px;color:#8fa6bf;text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em">build v1.8.6 · 2026-11-24</div>
   </aside>
 
   <!-- ============================================================
@@ -4291,6 +4296,11 @@ function importarJSON(ev) {
     try {
       const parsedRaw = JSON.parse(e.target.result);
       if (!parsedRaw || typeof parsedRaw !== 'object') throw new Error('Estrutura inválida');
+      // Arquivo de auto-backup (várias OS): este botão é de uma OS só. Sem este aviso virava uma OS vazia com "sucesso".
+      if (_ehObjeto(parsedRaw) && parsedRaw.meta === undefined && parsedRaw.itens === undefined && (_ehObjeto(parsedRaw.os) || Array.isArray(parsedRaw.os))) {
+        toast('Este arquivo é um backup com várias OS. Use o botão "Importar backup (várias OS)".');
+        return;
+      }
       // Sanitização contra prototype pollution — JSONs vindos de terceiros
       // podem conter __proto__/constructor/prototype maliciosos.
       const parsed = _sanitizarObjeto(parsedRaw);
@@ -4371,6 +4381,313 @@ function importarJSON(ev) {
 }
 
 /* ============================================================
+   IMPORTAR BACKUP — várias OS de uma vez (v1.8.6)
+   ------------------------------------------------------------
+   Para levar o histórico de um app para outro (ex.: do GitHub Pages para a Cloudflare):
+   no app antigo, o auto-backup salva um .json com todas as OS; aqui ele entra de uma vez.
+   Aceita, em qualquer mistura e em vários arquivos ao mesmo tempo:
+   (a) auto-backup: { currentOSId, os: { id: OS } } (os também pode ser lista);
+   (b) JSON de uma OS (o do "Exportar JSON").
+   Regras (nada é sobrescrito):
+   - OS com o mesmo id e o mesmo conteúdo: ignorada ("já existia"). Se o arquivo traz imagens de fotos
+     dessa OS que faltam no aparelho, elas são recuperadas (importar de novo um backup de outro aparelho completa as fotos).
+   - OS com o mesmo id e conteúdo diferente: fica como está no aparelho e entra no resumo.
+   - o mesmo id em mais de um arquivo desta importação: vale a de maior atualizadoEm.
+   - demonstração de qualquer versão (id os_demo_*): ignorada.
+   - toda OS passa pelas mesmas validações do "Importar JSON" (sanitizarOS).
+   - as imagens vão para o banco de fotos; foto sem imagem no arquivo vira "sem imagem" no resumo.
+   - data de criação e de última alteração de cada OS são mantidas (o histórico não vira "tudo de hoje").
+   - grava a cada OS; se o armazenamento encher, a OS que não coube sai da memória, o resumo avisa
+     e importar o mesmo arquivo de novo continua de onde parou.
+   O arquivo é lido por inteiro na memória: acima de 100 MB o app recusa.
+   ============================================================ */
+const _BACKUP_LIMITE_BYTES = 100 * 1048576;
+let _importandoBackup = false;
+
+function _lerArquivoTexto(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error || new Error('falha ao ler o arquivo'));
+    r.readAsText(file);
+  });
+}
+
+// Data de arquivo → ISO, só entre 2000 e amanhã (texto estranho ou data no futuro não pode fixar a OS no topo da lista).
+function _dataIsoDeArquivo(v) {
+  if (typeof v !== 'string' || v.length > 40) return null;
+  const t = Date.parse(v);
+  if (!isFinite(t)) return null;
+  const ano = new Date(t).getUTCFullYear();
+  if (ano < 2000 || t > Date.now() + 86400000) return null;
+  return new Date(t).toISOString();
+}
+
+// Monta a OS completa a partir de um documento vindo de arquivo (a mesma regra do "Importar JSON").
+// manterDatas: mantém criadoEm/atualizadoEm do arquivo (importação de histórico).
+// idDaChave: a chave da OS no mapa "os" do auto-backup, usada se o id dentro da OS faltar ou for inválido
+// (assim importar o mesmo arquivo de novo reconhece a mesma OS em vez de criar outra com id sorteado).
+// Devolve { os, corrigidos }.
+function _prepararOSImportada(parsedRaw, manterDatas, idDaChave) {
+  if (!_ehObjeto(parsedRaw) || (parsedRaw.meta === undefined && parsedRaw.itens === undefined)) throw new Error('não parece uma OS');
+  const parsed = _sanitizarObjeto(parsedRaw);
+  const padrao = gerarOSDefault();
+  // Re-mapeia o checklist importado por texto do item (alinhado à migração do carregarEstado).
+  const checklistMigrado = JSON.parse(JSON.stringify(CHECKLIST_DEFAULT));
+  if (Array.isArray(parsed.checklist)) {
+    parsed.checklist.filter(_ehObjeto).forEach(antigo => {
+      const idx = checklistMigrado.findIndex(n => n.item === antigo.item);
+      if (idx !== -1) {
+        checklistMigrado[idx].status = _txtSeg(antigo.status);
+        checklistMigrado[idx].obs = _txtSeg(antigo.obs);
+      }
+    });
+  }
+  const idArquivo = (parsed.id === undefined || parsed.id === null || parsed.id === '') ? '' : String(parsed.id);
+  const idFinal = idValido(idArquivo) ? idArquivo : (idValido(idDaChave) ? idDaChave : (idArquivo || padrao.id));
+  const agora = new Date().toISOString();
+  const os = {
+    id: idFinal,
+    criadoEm: _dataIsoDeArquivo(parsed.criadoEm) || padrao.criadoEm,
+    atualizadoEm: (manterDatas && _dataIsoDeArquivo(parsed.atualizadoEm)) || agora,
+    meta: Object.assign({}, padrao.meta, _ehObjeto(parsed.meta) ? parsed.meta : {}),
+    itens: Array.isArray(parsed.itens) ? parsed.itens.filter(_ehObjeto).map(it => Object.assign(
+      { id: gerarId('it', 6),
+        sistema: '', sintoma: '', testes: '', causaRaiz: '', acao: '',
+        status: 'Resolvido', fotos: [], pecas: [], expandido: false },
+      it,
+      { fotos: Array.isArray(it.fotos) ? it.fotos : [],
+        pecas: Array.isArray(it.pecas) ? it.pecas : [] }
+    )) : [],
+    checklist: checklistMigrado,
+    relatorioGerado: _dataIsoDeArquivo(parsed.relatorioGerado)
+  };
+  const corrigidos = sanitizarOS(os);
+  // como o carregarEstado: o campo "codigo" das peças não é mais usado
+  os.itens.forEach(it => (it.pecas || []).forEach(p => { if ('codigo' in p) delete p.codigo; }));
+  if (!Array.isArray(os.meta.observacoesFotos)) os.meta.observacoesFotos = [];
+  return { os, corrigidos };
+}
+
+// Todas as fotos de uma OS (itens e observações), com o "sistema" que vai no registro do banco.
+function _fotosParaMigrar(os) {
+  const lista = [];
+  (os.itens || []).forEach(it => (it.fotos || []).forEach(f => lista.push({ f, sistema: it.sistema || '' })));
+  ((os.meta && os.meta.observacoesFotos) || []).forEach(f => lista.push({ f, sistema: 'observacoes' }));
+  return lista;
+}
+
+// Assinatura para comparar "é a mesma OS?": ignora o que muda sem a OS mudar (data de alteração, relatório gerado,
+// item aberto/fechado na tela) e as imagens das fotos (ficam no banco de fotos; a da assinatura do cliente conta).
+// Chaves em ordem alfabética: a mesma OS escrita em outra ordem dá a mesma assinatura.
+function _assinaturaOS(os) {
+  return JSON.stringify(os, function (k, v) {
+    if (k === 'atualizadoEm' || k === 'relatorioGerado' || k === 'expandido') return undefined;
+    if (k === 'dataUrl' && !('salvo' in this)) return undefined;   // 'salvo' só existe no objeto da assinatura do cliente
+    if (v && typeof v === 'object' && !Array.isArray(v)) { const o = {}; Object.keys(v).sort().forEach(c => { o[c] = v[c]; }); return o; }
+    return v;
+  });
+}
+
+// Grava no banco de fotos as imagens da OS e as tira do texto salvo. Devolve { gravadas, semImagem, criadas }.
+// Se o id da foto já existe no banco com OUTRA imagem (de outra OS), a foto recebe id novo: nada é sobrescrito.
+// "criadas" são os registros novos (para desfazer se a OS não couber no armazenamento).
+async function _migrarFotosDaOSImportada(os) {
+  let gravadas = 0, semImagem = 0;
+  const criadas = [];
+  for (const { f, sistema } of _fotosParaMigrar(os)) {
+    if (!f.dataUrl) { semImagem++; continue; }
+    const lido = await _idbLerFotoParaExport(f.id);   // distingue "ausente" de "erro de leitura" e reabre a conexão se preciso
+    if (lido.estado === 'erro') throw new Error('não foi possível ler o banco de fotos (' + lido.motivo + ')');
+    let nova = lido.estado === 'ausente';
+    if (lido.estado === 'ok' && lido.reg && lido.reg.dataUrl && lido.reg.dataUrl !== f.dataUrl) { f.id = gerarId('fo', 6); nova = true; }
+    const ok = await _wbmigComTempo(idbSalvarFoto({ id: f.id, dataUrl: f.dataUrl, sistema, criadoEm: f.criadoEm || new Date().toISOString() }), _WBMIG_TEMPO_BANCO_MS, false);
+    if (!ok) throw new Error('não foi possível gravar uma foto no banco de fotos do aparelho');
+    _fotosCache.delete(f.id);   // se esta foto já tinha sido lida como ausente (vazio no cache), passa a valer a imagem gravada
+    if (nova) criadas.push(f.id);
+    delete f.dataUrl;
+    gravadas++;
+  }
+  return { gravadas, semImagem, criadas };
+}
+
+// OS que já existe no aparelho: se o arquivo traz a imagem de uma foto DESSA OS que está faltando no banco, grava.
+async function _recuperarImagensDaOSExistente(local, os) {
+  const idsLocais = new Set(_fotosParaMigrar(local).map(x => x.f.id));
+  let recuperadas = 0;
+  for (const { f, sistema } of _fotosParaMigrar(os)) {
+    if (!f.dataUrl || !idsLocais.has(f.id)) continue;
+    const locFoto = _fotosParaMigrar(local).find(x => x.f.id === f.id);
+    if (locFoto && locFoto.f.dataUrl) continue;   // a imagem desta foto está embutida na OS do aparelho
+    const lido = await _idbLerFotoParaExport(f.id);
+    if (lido.estado === 'erro') throw new Error('não foi possível ler o banco de fotos (' + lido.motivo + ')');
+    if (lido.estado === 'ok' && lido.reg && lido.reg.dataUrl) continue;   // já tem imagem
+    const ok = await _wbmigComTempo(idbSalvarFoto({ id: f.id, dataUrl: f.dataUrl, sistema, criadoEm: f.criadoEm || new Date().toISOString() }), _WBMIG_TEMPO_BANCO_MS, false);
+    if (!ok) throw new Error('não foi possível gravar uma foto no banco de fotos do aparelho');
+    _fotosCache.delete(f.id);   // a leitura anterior (ausente) ficou no cache como vazio
+    recuperadas++;
+  }
+  return recuperadas;
+}
+
+async function importarBackup(ev) {
+  const arquivos = ev && ev.target && ev.target.files ? Array.from(ev.target.files) : [];
+  if (ev && ev.target) ev.target.value = '';
+  if (arquivos.length === 0) return;
+  if (_importandoBackup) return;
+  if (_wbmigFotosEmAndamento > 1) { toast('Há fotos sendo adicionadas. Espere terminar e importe de novo.'); return; }
+  _importandoBackup = true;
+  const r = { arquivos: arquivos.length, novas: [], iguais: 0, diferentes: [], demos: 0, repetidas: 0, arquivosInvalidos: [], osInvalidas: 0,
+    fotosGravadas: 0, imagensRecuperadas: 0, fotosSemImagem: [], comCorrecao: 0, motivoParada: '', paradaPorEspaco: false, naoCouberam: [] };
+  let comOverlay = false;
+  let telaLigada = null;
+  let importacaoEncerrada = false;
+  try {
+    if (recognitionButtonId) pararVoz();
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    comOverlay = true;
+    mostrarOverlayProcessando('Lendo o backup… Mantenha o app aberto e a tela ligada.');
+    // Pedido de tela ligada com limite de 3 s: se o navegador demorar a responder, a importação não espera.
+    try {
+      if (navigator.wakeLock && navigator.wakeLock.request) {
+        const pedido = navigator.wakeLock.request('screen').then(l => { if (importacaoEncerrada) { try { l.release(); } catch (e) { /* já solta */ } } else telaLigada = l; }, () => { /* sem tela ligada: segue */ });
+        await _wbmigComTempo(pedido, 3000, null);
+      }
+    } catch (e) { /* segue sem tela ligada */ }
+    // 1) lê os arquivos e separa as OS (documentos, cada um com a chave que tinha no mapa "os")
+    const docs = [];
+    for (const file of arquivos) {
+      if (file.size > _BACKUP_LIMITE_BYTES) { r.arquivosInvalidos.push(file.name + ' (maior que 100 MB: separe em arquivos menores ou use um computador)'); continue; }
+      let bruto;
+      try { bruto = JSON.parse(await _lerArquivoTexto(file)); } catch (e) { r.arquivosInvalidos.push(file.name + ' (não é um JSON válido)'); continue; }
+      if (!bruto || typeof bruto !== 'object') { r.arquivosInvalidos.push(file.name + ' (formato não reconhecido)'); continue; }
+      if (_ehObjeto(bruto) && (bruto.os !== undefined) && (_ehObjeto(bruto.os) || Array.isArray(bruto.os))) {
+        if (Array.isArray(bruto.os)) bruto.os.forEach(d => docs.push({ doc: d, chave: '' }));
+        else Object.keys(bruto.os).forEach(k => docs.push({ doc: bruto.os[k], chave: k }));
+      } else if (_ehObjeto(bruto) && (bruto.meta !== undefined || bruto.itens !== undefined)) {
+        docs.push({ doc: bruto, chave: '' });
+      } else {
+        r.arquivosInvalidos.push(file.name + ' (não parece um backup nem uma OS do app)');
+      }
+    }
+    // 2) o mesmo id em mais de um arquivo: vale o de maior atualizadoEm (empate: o primeiro)
+    const porId = new Map();
+    const fila = [];
+    for (const d of docs) {
+      const idBruto = _ehObjeto(d.doc) && d.doc.id !== undefined && d.doc.id !== null && d.doc.id !== '' ? String(d.doc.id) : (d.chave || '');
+      if (!idBruto) { fila.push(d); continue; }
+      if (!porId.has(idBruto)) { porId.set(idBruto, d); fila.push(d); continue; }
+      r.repetidas++;
+      const atual = porId.get(idBruto);
+      const tNovo = Date.parse(_ehObjeto(d.doc) ? d.doc.atualizadoEm : '') || 0;
+      const tAtual = Date.parse(_ehObjeto(atual.doc) ? atual.doc.atualizadoEm : '') || 0;
+      if (tNovo > tAtual) { fila[fila.indexOf(atual)] = d; porId.set(idBruto, d); }
+    }
+    // 3) importa uma a uma, gravando a cada OS (se o app fechar no meio, o que já entrou fica)
+    for (let k = 0; k < fila.length; k++) {
+      mostrarOverlayProcessando('Importando OS ' + (k + 1) + ' de ' + fila.length + '… Mantenha o app aberto e a tela ligada.');
+      let prep;
+      try { prep = _prepararOSImportada(fila[k].doc, true, fila[k].chave); } catch (e) { r.osInvalidas++; continue; }
+      const os = prep.os;
+      const numero = (os.meta && os.meta.numero) ? String(os.meta.numero).slice(0, 40) : '(sem número)';
+      if (/^os_demo_/.test(os.id)) { r.demos++; continue; }
+      const local = Object.prototype.hasOwnProperty.call(state.os, os.id) ? state.os[os.id] : null;
+      if (local) {
+        if (_assinaturaOS(local) === _assinaturaOS(os)) r.iguais++; else r.diferentes.push(numero);
+        r.imagensRecuperadas += await _recuperarImagensDaOSExistente(local, os);
+        continue;
+      }
+      const f = await _migrarFotosDaOSImportada(os);
+      state.os[os.id] = os;
+      salvarEstado();
+      if (flushSalvarEstado() === false) {
+        // não coube no armazenamento: a OS sai da memória (senão todo salvamento seguinte falharia) e as fotos novas dela saem do banco
+        delete state.os[os.id];
+        await Promise.all(f.criadas.map(nid => _wbmigComTempo(idbExcluirFoto(nid), 5000, null)));
+        r.naoCouberam.push(numero);
+        r.paradaPorEspaco = true;
+        r.motivoParada = 'O armazenamento do aparelho ficou cheio';
+        break;
+      }
+      r.novas.push(numero);
+      r.fotosGravadas += f.gravadas;
+      if (f.semImagem > 0) r.fotosSemImagem.push({ numero, qtde: f.semImagem });
+      if (prep.corrigidos > 0) r.comCorrecao++;
+    }
+  } catch (e) {
+    console.error('Falha ao importar o backup:', e);
+    r.motivoParada = 'Houve um erro durante a importação';
+  } finally {
+    importacaoEncerrada = true;
+    if (comOverlay) ocultarOverlayProcessando();
+    try { if (telaLigada && telaLigada.release) await telaLigada.release(); } catch (e) { /* já solta */ }
+    _importandoBackup = false;
+  }
+  try { renderTudo(); } catch (e) { console.error(e); }
+  _importarBackupResumo(r);
+}
+
+// Janela com o resumo (texto puro, sem innerHTML): o que entrou, o que já existia, o que faltou.
+function _importarBackupResumo(r) {
+  const focoAnterior = document.activeElement;
+  const fundo = _wbmigEl('div', null, 'z-index:250', 'modal-backdrop show');
+  fundo.setAttribute('role', 'dialog');
+  fundo.setAttribute('aria-modal', 'true');
+  fundo.setAttribute('aria-label', 'Importar backup');
+  fundo.id = 'janelaImportarBackup';
+  fundo.tabIndex = -1;
+  const caixa = _wbmigEl('div', null, 'overscroll-behavior:contain;overflow-wrap:anywhere;max-height:90vh;overflow-y:auto', 'modal');
+  const avisos = r.motivoParada || r.diferentes.length || r.fotosSemImagem.length || r.arquivosInvalidos.length || r.osInvalidas || r.comCorrecao;
+  const nadaNovo = r.novas.length === 0 && !avisos;
+  const titulo = _wbmigEl('h3', r.motivoParada ? 'Importação interrompida' : (nadaNovo ? 'Nada novo para importar' : (avisos ? 'Importação concluída, com avisos' : 'Importação concluída')), 'margin:0 0 6px;font-family:var(--serif);color:var(--azul-marinho)');
+  const corpo = _wbmigEl('div', null, 'font-size:14px;line-height:1.55;margin:12px 0');
+  const linha = (txt, estilo) => corpo.appendChild(_wbmigEl('p', txt, 'margin:6px 0;' + (estilo || '')));
+  const resumir = (lista) => lista.slice(0, 12).join(', ') + (lista.length > 12 ? ' e mais ' + (lista.length - 12) : '');
+  linha('Arquivos lidos: ' + r.arquivos + '.');
+  linha('OS importadas: ' + r.novas.length + (r.novas.length ? ' (' + resumir(r.novas) + ')' : '') + '.', 'font-weight:600;color:var(--status-ok)');
+  if (r.novas.length) linha('Toque numa OS da lista para abrir.');
+  if (r.fotosGravadas) linha('Fotos gravadas no aparelho: ' + r.fotosGravadas + '.');
+  if (r.imagensRecuperadas) linha('Imagens que faltavam e foram recuperadas: ' + r.imagensRecuperadas + '.', 'font-weight:600;color:var(--status-ok)');
+  if (r.iguais) linha('Já existiam iguais (ignoradas): ' + r.iguais + '.');
+  if (r.repetidas) linha('Repetidas entre os arquivos (valeu a mais recente): ' + r.repetidas + '.');
+  if (r.demos) linha('Demonstração (ignorada): ' + r.demos + '.');
+  if (r.motivoParada) {
+    const dica = r.paradaPorEspaco
+      ? 'Libere espaço no aparelho'
+      : 'Mantenha a tela ligada, feche outros apps';
+    linha('⚠ ' + r.motivoParada + (r.naoCouberam.length ? ' (a OS ' + r.naoCouberam.join(', ') + ' não coube e não foi importada)' : '') + '. As OS listadas como importadas ficaram salvas. ' + dica + ' e importe o mesmo arquivo de novo: o que já entrou é ignorado e a importação continua de onde parou.', 'font-weight:600;color:var(--status-pendente)');
+  }
+  if (r.diferentes.length) linha('⚠ Já existiam no aparelho com conteúdo diferente (mantidas as do aparelho): ' + resumir(r.diferentes) + '. Para ficar com a versão do arquivo, apague a OS no aparelho e importe de novo.', 'font-weight:600');
+  if (r.fotosSemImagem.length) {
+    const total = r.fotosSemImagem.reduce((s, x) => s + x.qtde, 0);
+    linha('⚠ Fotos sem imagem no arquivo: ' + total + ' (' + resumir(r.fotosSemImagem.map(x => 'OS ' + x.numero + ': ' + x.qtde + (x.qtde === 1 ? ' foto' : ' fotos'))) + '). Essas imagens já não estavam no navegador de onde o backup saiu. Se existirem em outro aparelho, importe o backup de lá: as imagens que faltam entram sozinhas.', 'font-weight:600');
+  }
+  if (r.comCorrecao) linha('Em ' + r.comCorrecao + ' OS alguns campos inválidos do arquivo foram corrigidos na importação.');
+  if (r.osInvalidas) linha('⚠ OS que não puderam ser lidas: ' + r.osInvalidas + '.', 'font-weight:600');
+  r.arquivosInvalidos.slice(0, 6).forEach(a => linha('⚠ Arquivo ignorado: ' + a + '.', 'font-weight:600'));
+  if (r.arquivosInvalidos.length > 6) linha('⚠ e mais ' + (r.arquivosInvalidos.length - 6) + ' arquivos ignorados.', 'font-weight:600');
+  const acoes = _wbmigEl('div', null, 'margin-top:12px;' + (window.innerWidth < 600 ? 'flex-direction:column;align-items:stretch' : 'flex-wrap:wrap'), 'modal-actions');
+  const fechar = _wbmigEl('button', 'Fechar', null, 'btn btn-primary');
+  fechar.type = 'button';
+  const sair = () => {
+    document.removeEventListener('keydown', aoTeclar, true);
+    if (fundo.parentNode) fundo.parentNode.removeChild(fundo);
+    try { if (focoAnterior && focoAnterior.focus) focoAnterior.focus(); } catch (e) { /* tela mudou */ }
+  };
+  const aoTeclar = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); sair(); }
+    else if (e.key === 'Tab') { e.preventDefault(); fechar.focus(); }   // só há um botão: o foco fica preso na janela
+  };
+  fechar.onclick = sair;
+  document.addEventListener('keydown', aoTeclar, true);
+  acoes.appendChild(fechar);
+  caixa.append(titulo, corpo, acoes);
+  fundo.appendChild(caixa);
+  document.body.appendChild(fundo);
+  fechar.focus();
+}
+
+/* ============================================================
    EXPORTAR TUDO — backup de todas as OS e fotos deste app
    ------------------------------------------------------------
    v1.8.2 · primeiro passo da migração para a nuvem.
@@ -4433,11 +4750,11 @@ const WBMIG_VERSAO_FORMATO = 1;
 let WBMIG_LIMITE_PARTE_BYTES = 120 * 1024 * 1024; // let: os testes automáticos reduzem o limite para forçar várias partes
 const ULTIMO_EXPORT_KEY = 'wonderboat_ultimo_export_v1';
 let _exportTudoEmAndamento = false;
-let _wbmigFotosEmAndamento = 0;   // fotos sendo adicionadas ou copiadas agora (adicionarFoto, adicionarFotoObservacao e duplicarOS)
+let _wbmigFotosEmAndamento = 0;   // fotos sendo adicionadas ou copiadas agora (adicionarFoto, adicionarFotoObservacao, duplicarOS e importarBackup)
 (function () {
   // Conta as adições de foto (e a duplicação de OS, que copia fotos) em andamento, com try/finally (uma exceção não deixa
   // o contador preso). Preserva argumentos, this, retorno e erros das funções originais.
-  for (const nome of ['adicionarFoto', 'adicionarFotoObservacao', 'duplicarOS']) {
+  for (const nome of ['adicionarFoto', 'adicionarFotoObservacao', 'duplicarOS', 'importarBackup']) {
     const original = window[nome];
     if (typeof original !== 'function' || original._wbmigEnvolvida) continue;
     const envolvida = async function () {
@@ -5306,7 +5623,7 @@ function _exportTudoMostrarResultado(ui, res) {
   }
   const nota = 'margin:10px 0 0;font-size:12.5px;color:var(--texto-suave)';
   if (conferido) {
-    ui.texto('Este arquivo é uma cópia de segurança. O app ainda não consegue abri-lo sozinho: para recuperar dados, avise o suporte e a equipe restaura a partir dele. Não use "Importar JSON" com este arquivo. Para apagar uma OS com segurança, exporte também o JSON dela.', nota);
+    ui.texto('Este arquivo é uma cópia de segurança. O app ainda não consegue abri-lo sozinho: para recuperar dados, avise o suporte e a equipe restaura a partir dele. Não use "Importar JSON" nem "Importar backup" com este arquivo. Para apagar uma OS com segurança, exporte também o JSON dela.', nota);
   }
   ui.texto('Edições feitas direto no texto do relatório gerado não ficam salvas no aparelho e, por isso, não entram no backup. O PDF enviado ao cliente continua sendo o registro do que foi entregue.', nota);
   ui.texto('Este arquivo contém CPF, assinaturas, fotos e coordenadas dos clientes. Guarde-o só em local da empresa (computador ou Drive da empresa) e não envie por WhatsApp.', nota);
@@ -6268,11 +6585,14 @@ async function gerarPDFBlob(osIdEsperado) {
     const boxW = Math.round(rect.width);
     const boxH = Math.round(rect.height);
     if (boxW <= 0 || boxH <= 0) return;
+    if (!img.getAttribute('src')) return;   // foto sem imagem (src vazio): nunca dispara load/error e travava o PDF para sempre
     try {
       if (!img.complete || img.naturalWidth === 0) {
         await new Promise((res) => {
-          img.addEventListener('load', res, { once: true });
-          img.addEventListener('error', res, { once: true });
+          const t = setTimeout(res, 15000);   // imagem que nunca termina de carregar não pode travar o PDF
+          const fim = () => { clearTimeout(t); res(); };
+          img.addEventListener('load', fim, { once: true });
+          img.addEventListener('error', fim, { once: true });
         });
       }
       if (!img.naturalWidth || !img.naturalHeight) return; // sem dimensões, mantém como está
@@ -7057,7 +7377,7 @@ async function gerarRelatorio(opts) {
       const ehPanoramica = f._aspect && (f._aspect > 1.7 || f._aspect < 0.55);
       html += `
         <div class="r-foto${ehPanoramica ? ' r-foto-panoramica' : ''}">
-          <img src="${dataUrlImagemSegura(f.dataUrl)}" alt="Evidência">
+          <img src="${dataUrlImagemSegura(f.dataUrl)}" alt="${f.dataUrl ? 'Evidência' : 'Foto sem imagem'}">
           <div class="r-foto-cap">
             ${cap ? `<div class="r-foto-cap-tec" contenteditable="true">${escapeHtmlMultilinha(cap)}</div>` : ''}
           </div>
@@ -7154,7 +7474,7 @@ async function gerarRelatorio(opts) {
         const cap = f.legendaTecnica || '';
         html += `
           <div class="r-foto">
-            <img src="${dataUrlImagemSegura(f.dataUrl)}" alt="Evidência da observação">
+            <img src="${dataUrlImagemSegura(f.dataUrl)}" alt="${f.dataUrl ? 'Evidência da observação' : 'Foto sem imagem'}">
             <div class="r-foto-cap">
               ${cap ? `<div class="r-foto-cap-tec" contenteditable="true">${escapeHtmlMultilinha(cap)}</div>` : ''}
             </div>
@@ -8226,6 +8546,7 @@ function configurarAutoBackup() {
       Salva automaticamente um arquivo JSON com todas as OSs e fotos na pasta Downloads,
       em intervalo regular. Útil como rede de segurança contra perda de dados do navegador.
       O backup só é gerado quando há mudança real desde a última gravação.
+      Para recuperar: na barra lateral, toque em "Importar backup (várias OS)" e escolha o arquivo (nada é sobrescrito; fotos que o navegador já não tinha não entram).
     </span>
 
     <div style="background:var(--bg);border:1px solid var(--linha-discreta);border-radius:8px;padding:14px;margin-bottom:12px">
@@ -8413,7 +8734,7 @@ function mostrarAvisoSessao(vencida) {
 /* ============================================================
    INICIALIZAÇÃO
    ============================================================ */
-const WB_BUILD_VERSION = 'v1.8.5 · 2026-11-24';
+const WB_BUILD_VERSION = 'v1.8.6 · 2026-11-24';
 
 function init() {
   console.log('[Wonder Boat] Build ' + WB_BUILD_VERSION + ' — init() iniciado');
