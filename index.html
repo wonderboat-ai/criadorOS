@@ -2262,7 +2262,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         Limpar Tudo
       </button>
     </div>
-    <div id="wbVersionLabel" style="font-size:10px;color:#8fa6bf;text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em">build v1.8.2 · 2026-11-22</div>
+    <div id="wbVersionLabel" style="font-size:10px;color:#8fa6bf;text-align:center;padding:6px 8px;font-family:var(--mono,monospace);letter-spacing:0.04em">build v1.8.3 · 2026-11-23</div>
   </aside>
 
   <!-- ============================================================
@@ -3870,6 +3870,7 @@ async function adicionarFotoObservacao(ev) {
     }
   }
   os.atualizadoEm = new Date().toISOString();
+  salvarEstado(); // sem isto, o flush abaixo não grava nada (só grava se já houver um salvamento pendente)
   flushSalvarEstado();
   renderObservacoesFotos();
   ev.target.value = '';
@@ -3881,10 +3882,13 @@ async function removerFotoObservacao(fotoId) {
   if (!os || !Array.isArray(os.meta.observacoesFotos)) return;
   os.meta.observacoesFotos = os.meta.observacoesFotos.filter(f => f.id !== fotoId);
   _fotosCache.delete(fotoId);
-  await idbExcluirFoto(fotoId);
   os.atualizadoEm = new Date().toISOString();
+  // Grava a lista ANTES de apagar a imagem: se o app fechar no meio, sobra uma imagem órfã (inofensiva)
+  // em vez de uma foto "fantasma" (referência sem imagem). O flush sozinho só grava se houver salvamento pendente.
+  salvarEstado();
   flushSalvarEstado();
   renderObservacoesFotos();
+  await idbExcluirFoto(fotoId);
 }
 
 function atualizarFotoObservacao(fotoId, campo, valor) {
@@ -3907,6 +3911,7 @@ function moverFotoObservacao(fotoId, delta) {
   if (novoIdx < 0 || novoIdx >= arr.length) return;
   const tmp = arr[idx]; arr[idx] = arr[novoIdx]; arr[novoIdx] = tmp;
   os.atualizadoEm = new Date().toISOString();
+  salvarEstado(); // grava já: o flush sozinho só grava se houver salvamento pendente
   flushSalvarEstado();
   renderObservacoesFotos();
 }
@@ -7003,7 +7008,9 @@ async function gerarRelatorio(opts) {
   }
 
   // OBSERVAÇÕES FINAIS — texto + galeria de fotos próprias do bloco
-  const obsFotos = Array.isArray(m.observacoesFotos) ? m.observacoesFotos.slice() : [];
+  // Cópias das fotos: o laço abaixo embute dataUrl e _aspect em cada objeto; nas fotos vivas isso iria
+  // para o texto salvo no aparelho e o inflaria (a imagem já fica guardada no banco de fotos).
+  const obsFotos = Array.isArray(m.observacoesFotos) ? m.observacoesFotos.map(f => ({ ...f })) : [];
   // Resolve dataUrls e mede aspect em paralelo (mesmo tratamento da galeria
   // principal — fotos com aspect extremo ocupam linha inteira).
   await Promise.all(obsFotos.map(async (f) => {
@@ -8018,7 +8025,7 @@ function registrarServiceWorker() {
 /* ============================================================
    INICIALIZAÇÃO
    ============================================================ */
-const WB_BUILD_VERSION = 'v1.8.2 · 2026-11-22';
+const WB_BUILD_VERSION = 'v1.8.3 · 2026-11-23';
 
 function init() {
   console.log('[Wonder Boat] Build ' + WB_BUILD_VERSION + ' — init() iniciado');

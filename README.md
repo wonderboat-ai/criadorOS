@@ -3,7 +3,7 @@
 > Gerador de Relatórios Técnicos Navais auditáveis, para uso em campo.
 > Aplicativo web autocontido, offline-first, sem backend.
 
-![Versão](https://img.shields.io/badge/vers%C3%A3o-v1.8.2-148695)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-v1.8.3-148695)
 ![Status](https://img.shields.io/badge/status-produ%C3%A7%C3%A3o-1f8a4c)
 ![Licença](https://img.shields.io/badge/uso-interno%20Wonder%20Boat-C9A227)
 

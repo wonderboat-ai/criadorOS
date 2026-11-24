@@ -7,7 +7,7 @@
    a aplicação principal recebe notificação e pode oferecer recarregamento.
    ============================================================ */
 
-const CACHE_VERSION = 'wonderboat-v1.8.2';
+const CACHE_VERSION = 'wonderboat-v1.8.3';
 // Versão embutida no nome do cache: ao subir CACHE_VERSION, o filtro do
 // activate descarta automaticamente caches de versões anteriores.
 const CACHE_NAME = 'wonderboat-cache-' + CACHE_VERSION;
