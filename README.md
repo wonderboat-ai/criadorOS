@@ -3,7 +3,7 @@
 > Gerador de Relatórios Técnicos Navais auditáveis, para uso em campo.
 > Aplicativo web autocontido, offline-first, sem backend.
 
-![Versão](https://img.shields.io/badge/vers%C3%A3o-v1.8.4-148695)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-v1.8.5-148695)
 ![Status](https://img.shields.io/badge/status-produ%C3%A7%C3%A3o-1f8a4c)
 ![Licença](https://img.shields.io/badge/uso-interno%20Wonder%20Boat-C9A227)
 
@@ -141,12 +141,12 @@ Cada Ordem de Serviço é serializada como JSON:
   "id": "os_1746300000_abc123",
   "criadoEm": "2026-05-03T10:30:00.000Z",
   "meta": {
-    "numero": "4657",
-    "embarcacao": "Squish",
-    "estaleiroModelo": "Prestige 550",
-    "anoEmbarcacao": "2017",
-    "proprietario": "Tony Costa",
-    "coordenadas": "26°59'615 S · 48°38'157 W",
+    "numero": "0001",
+    "embarcacao": "Aurora",
+    "estaleiroModelo": "Modelo Exemplo 55",
+    "anoEmbarcacao": "2018",
+    "proprietario": "Proprietário Exemplo",
+    "coordenadas": "00°00'000 S · 00°00'000 W",
     "observacoes": "...",
     "observacoesFotos": [...],
     "assinaturaCliente": { "nome": "...", "documento": "...", "dataUrl": "..." },
